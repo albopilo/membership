@@ -23,9 +23,11 @@ async function fetchMembers() {
 
 // Save member to Firestore
 function saveMember(member) {
+  if (!member.transactions) {
+    member.transactions = [];
+  }
   return db.collection("members").doc(member.id).set(member);
 }
-
 // Delete member
 function deleteMember(id) {
   return db.collection("members").doc(id).delete();
@@ -143,7 +145,7 @@ if (document.getElementById("memberDetails")) {
     const lastYear = thisYear - 1;
 
     let monthly = 0, yearly = 0, lastYearTotal = 0, full = 0;
-    member.transactions.forEach(tx => {
+    (member.transactions || []).forEach(tx => {
       const date = new Date(tx.date);
       full += tx.amount;
       if (date.getFullYear() === thisYear) {
