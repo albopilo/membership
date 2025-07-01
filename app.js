@@ -43,11 +43,32 @@ async function loadTierSettingsFromCloud() {
 }
 loadTierSettingsFromCloud();
 
-document.getElementById("modeSelect").addEventListener("change", e => {
-  const selected = e.target.value;
-  localStorage.setItem("isAdmin", selected === "admin");
-  location.reload();
-});
+const modeSelect = document.getElementById("modeSelect");
+
+if (modeSelect) {
+  // Reflect saved mode in dropdown
+  const savedMode = localStorage.getItem("isAdmin") === "true" ? "admin" : "public";
+  modeSelect.value = savedMode;
+
+  modeSelect.addEventListener("change", async (e) => {
+    const selected = e.target.value;
+
+    if (selected === "admin") {
+      const password = prompt("🔐 Enter admin password:");
+      if (password === "1234") {
+        localStorage.setItem("isAdmin", true);
+        alert("✅ Admin mode enabled.");
+        location.reload();
+      } else {
+        alert("❌ Incorrect password. Staying in public mode.");
+        modeSelect.value = "public";
+      }
+    } else {
+      localStorage.setItem("isAdmin", false);
+      location.reload();
+    }
+  });
+}
 
 if (document.getElementById("memberList")) {
   // Live updates using Firestore's onSnapshot
@@ -178,6 +199,9 @@ if (document.getElementById("memberDetails")) {
     });
 
     const isJanFirst = (now.getMonth() === 0 && now.getDate() === 1);
+
+console.log("🧪 Yearly total:", yearly);
+console.log("🧪 Threshold for Gold:", tierSettings.silverToGoldYear);
     tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst);
 
     document.getElementById("memberDetails").innerHTML = `
@@ -203,12 +227,20 @@ if (document.getElementById("memberDetails")) {
       <button id="deleteMemberBtn" style="background-color:crimson; color:white;">
         🗑 Delete Member
       </button>
+`;
 
-if (!isAdmin) {
-  const delBtn = document.getElementById("deleteMemberBtn");
-if (!isAdmin && delBtn) delBtn.style.display = "none";
-}
-    `;
+document.getElementById("deleteMemberBtn").addEventListener("click", async () => {
+  if (!isAdmin) {
+    alert("❌ You must be in admin mode to delete members.");
+    return;
+  }
+
+  if (confirm("Are you sure you want to delete this member?")) {
+    await deleteMember(member.id);
+    alert("🗑 Member deleted.");
+    window.location.href = "index.html";
+  }
+});
 
     document.getElementById("addTxBtn").addEventListener("click", async () => {
       const amount = parseFloat(document.getElementById("txAmount").value);
@@ -242,14 +274,6 @@ if (!isAdmin && delBtn) delBtn.style.display = "none";
         await saveMember(member);
         alert("✅ Transaction added!");
         location.reload();
-      }
-    });
-
-    document.getElementById("deleteMemberBtn").addEventListener("click", async () => {
-      if (confirm(`Are you sure you want to delete ${member.name}?`)) {
-        await deleteMember(member.id);
-        alert("🗑 Member deleted.");
-        window.location.href = "index.html";
       }
     });
   }
@@ -349,13 +373,18 @@ async function updateTier(member) {
 
 // 🏅 Tier upgrade/demotion logic
 function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
-  const thresholds = typeof tierSettings !== "undefined" ? tierSettings : {
-    bronzeToSilverMonth: 50000,
-    bronzeToSilverYear: 500000,
-    silverToGoldMonth: 100000,
-    silverToGoldYear: 1000000,
-    silverMaintainYear: 400000,
-    goldMaintainYear: 800000
+
+if (!member.tier) {
+  member.tier = "Bronze";
+}
+
+  const thresholds = {
+    bronzeToSilverMonth: tierSettings.bronzeToSilverMonth ?? 50000,
+    bronzeToSilverYear: tierSettings.bronzeToSilverYear ?? 500000,
+    silverToGoldMonth: tierSettings.silverToGoldMonth ?? 100000,
+    silverToGoldYear: tierSettings.silverToGoldYear ?? 1250000,
+    silverMaintainYear: tierSettings.silverMaintainYear ?? 400000,
+    goldMaintainYear: tierSettings.goldMaintainYear ?? 800000
   };
 
   let upgraded = false;
@@ -366,6 +395,7 @@ function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
       upgraded = true;
       alert(`${member.name} upgraded to Silver!`);
     }
+    return upgraded; // Prevent further upgrades
   } else if (member.tier === "Silver") {
     if (monthly >= thresholds.silverToGoldMonth || yearly >= thresholds.silverToGoldYear) {
       member.tier = "Gold";
@@ -384,6 +414,7 @@ function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
     }
   }
 
+  console.log("🧪 Member tier after upgrade:", member.tier);
   return upgraded;
 }
 
