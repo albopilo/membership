@@ -1,28 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-  <meta charset="UTF-8" />
-  <title>Tier Settings</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <title>13e Settings</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; }
+    label { display: block; margin-top: 20px; }
+    input[type="number"] { width: 200px; }
+    button { margin-top: 30px; padding: 10px 20px; }
+  </style>
 </head>
 <body>
-  <h1>Tier Settings</h1>
 
-  <label>Bronze → Silver (Monthly): Rp <input type="number" id="monthlyThreshold" /></label><br />
-  <label>Bronze → Silver (Yearly): Rp <input type="number" id="yearlyThreshold" /></label><br />
-  <label>Maintain Silver (Yearly): Rp <input type="number" id="maintainSilver" /></label><br />
+  <h1>🎚 Tier Threshold Settings</h1>
 
-  <hr>
-  <label>Silver → Gold (Monthly): Rp <input type="number" id="silverToGoldMonth" /></label><br />
-  <label>Silver → Gold (Yearly): Rp <input type="number" id="silverToGoldYear" /></label><br />
-  <label>Maintain Gold (Yearly): Rp <input type="number" id="maintainGoldYear" /></label><br /><br />
+  <label>Bronze → Silver (Monthly): <input type="number" id="monthlyThreshold" /></label>
+  <label>Bronze → Silver (Yearly): <input type="number" id="yearlyThreshold" /></label>
+  <label>Silver Maintain (Yearly): <input type="number" id="maintainSilver" /></label>
+  <label>Silver → Gold (Monthly): <input type="number" id="silverToGoldMonth" /></label>
+  <label>Silver → Gold (Yearly): <input type="number" id="silverToGoldYear" /></label>
+  <label>Gold Maintain (Yearly): <input type="number" id="maintainGoldYear" /></label>
 
-  <button id="saveSettingsBtn">Save Settings</button>
-  <button onclick="location.href='index.html'">← Back</button>
+  <button id="saveSettingsBtn">💾 Save Settings</button>
 
-  <script src="app.js"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNvgS_PqEHU3llqHt0XHN30jJgiQWLkdc",
+      authDomain: "e-loyalty-12563.firebaseapp.com",
+      projectId: "e-loyalty-12563",
+      storageBucket: "e-loyalty-12563.appspot.com",
+      messagingSenderId: "3887061029",
+      appId: "1:3887061029:web:f9c238731d7e6dd5fb47cc",
+      measurementId: "G-966P8W06W2"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const settingsRef = db.collection("settings").doc("tierThresholds");
+
+    let tierSettings = {};
+
+    async function loadTierSettings() {
+      const doc = await settingsRef.get();
+      if (doc.exists) {
+        tierSettings = doc.data();
+        document.getElementById("monthlyThreshold").value = tierSettings.bronzeToSilverMonth || 0;
+        document.getElementById("yearlyThreshold").value = tierSettings.bronzeToSilverYear || 0;
+        document.getElementById("maintainSilver").value = tierSettings.silverMaintainYear || 0;
+        document.getElementById("silverToGoldMonth").value = tierSettings.silverToGoldMonth || 0;
+        document.getElementById("silverToGoldYear").value = tierSettings.silverToGoldYear || 0;
+        document.getElementById("maintainGoldYear").value = tierSettings.goldMaintainYear || 0;
+      } else {
+        console.warn("⚠️ No tierThresholds document found in Firestore.");
+      }
+    }
+
+    async function saveTierSettings() {
+      tierSettings = {
+        bronzeToSilverMonth: parseInt(document.getElementById("monthlyThreshold").value) || 0,
+        bronzeToSilverYear: parseInt(document.getElementById("yearlyThreshold").value) || 0,
+        silverMaintainYear: parseInt(document.getElementById("maintainSilver").value) || 0,
+        silverToGoldMonth: parseInt(document.getElementById("silverToGoldMonth").value) || 0,
+        silverToGoldYear: parseInt(document.getElementById("silverToGoldYear").value) || 0,
+        goldMaintainYear: parseInt(document.getElementById("maintainGoldYear").value) || 0,
+      };
+
+      try {
+        await settingsRef.set(tierSettings);
+        alert("✅ Settings saved to the cloud!");
+      } catch (err) {
+        console.error("Error saving settings:", err);
+        alert("⚠️ Failed to save settings. Check console for details.");
+      }
+    }
+
+    document.getElementById("saveSettingsBtn").addEventListener("click", saveTierSettings);
+    loadTierSettings();
+  </script>
+
 </body>
 </html>

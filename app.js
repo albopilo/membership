@@ -25,6 +25,33 @@ function deleteMember(id) {
 }
 
 // -------- INDEX PAGE --------
+let tierSettings = {
+  bronzeToSilverMonth: 50000,
+  bronzeToSilverYear: 500000,
+  silverToGoldMonth: 100000,
+  silverToGoldYear: 1000000,
+  silverMaintainYear: 400000,
+  goldMaintainYear: 800000
+};
+
+const settingsRef = db.collection("settings").doc("tierThresholds");
+
+async function loadTierSettingsFromCloud() {
+  try {
+    const doc = await settingsRef.get();
+    if (doc.exists) {
+      tierSettings = doc.data();
+      console.log("✅ Tier settings loaded from cloud:", tierSettings);
+    } else {
+      console.warn("⚠️ No tier settings found in Firestore. Using defaults.");
+    }
+  } catch (err) {
+    console.error("Failed to load tier settings:", err);
+  }
+}
+
+loadTierSettingsFromCloud(); // Call it once at app start
+
 if (document.getElementById("memberList")) {
   // Live updates using Firestore's onSnapshot
   db.collection("members").onSnapshot(snapshot => {
