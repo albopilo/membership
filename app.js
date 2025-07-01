@@ -77,11 +77,12 @@ async function loadTierSettingsFromCloud() {
 loadTierSettingsFromCloud();
 
 if (document.getElementById("memberList")) {
-  db.collection("members").onSnapshot(snapshot => {
+  db.collection("members").get().then(snapshot => {
     const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     renderMembers(members);
     checkUpcomingBirthdays(members);
   });
+}
 
   document.getElementById("searchInput").addEventListener("input", async (e) => {
     const members = await fetchMembers();
@@ -270,6 +271,36 @@ member.redeemablePoints = member.redeemablePoints || 0;
     </button>
   `;
 
+// 🔽 Add this OCR handler immediately after setting the HTML:
+setTimeout(() => {
+  const txFile = document.getElementById("txFile");
+  if (!txFile) return;
+
+  txFile.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      Tesseract.recognize(reader.result, 'eng').then(result => {
+        const match = result.data.text.match(/(?:grand\s*)?total\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
+        if (match) {
+          const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
+          document.getElementById("txAmount").value = extracted;
+          alert(`🧾 OCR auto-filled amount: Rp${extracted.toLocaleString()}`);
+        } else {
+          alert(`⚠️ Couldn't detect a total amount in the receipt.`);
+        }
+      }).catch(err => {
+        console.error("OCR error:", err);
+        alert("⚠️ Failed to scan receipt.");
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}, 200); // Wait for the DOM to render first
+
+
   // ➕ Add Transaction Logic
   document.getElementById("addTxBtn").addEventListener("click", async () => {
 
@@ -338,28 +369,33 @@ member.redeemablePoints = member.redeemablePoints || 0;
   });
 
 // ✅ Place the OCR handler right here
-document.getElementById("txFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+setTimeout(() => {
+  const txFile = document.getElementById("txFile");
+  if (txFile) {
+    txFile.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    Tesseract.recognize(reader.result, 'eng').then(result => {
-      const match = result.data.text.match(/(?:grand\s*)?total\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
-      if (match) {
-        const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
-        document.getElementById("txAmount").value = extracted;
-        alert(`🧾 OCR auto-filled amount: Rp${extracted.toLocaleString()}`);
-      } else {
-        alert("⚠️ Couldn't detect a total amount in the receipt.");
-      }
-    }).catch(err => {
-      console.error("OCR error:", err);
-      alert("⚠️ Failed to scan receipt.");
+      const reader = new FileReader();
+      reader.onload = () => {
+        Tesseract.recognize(reader.result, 'eng').then(result => {
+          const match = result.data.text.match(/(?:grand\s*)?total\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
+          if (match) {
+            const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
+            document.getElementById("txAmount").value = extracted;
+            alert(`🧾 OCR auto-filled amount: Rp${extracted.toLocaleString()}`);
+          } else {
+            alert(`⚠️ Couldn't detect a total amount in the receipt.`);
+          }
+        }).catch(err => {
+          console.error("OCR error:", err);
+          alert("⚠️ Failed to scan receipt.");
+        });
+      };
+      reader.readAsDataURL(file);
     });
-  };
-  reader.readAsDataURL(file);
-});
+  }
+}, 500); // Let the DOM settle
 
 
   // 🗑 Admin Delete Button
