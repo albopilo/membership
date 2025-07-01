@@ -1,67 +1,78 @@
-// Load members from localStorage or initialize defaults
-let members = JSON.parse(localStorage.getItem("membersData")) || [
-  {
-    id: "001",
-    name: "Ayu Lestari",
-    birthdate: "1990-01-01",
-    phone: "08123456789",
-    email: "ayu@example.com",
-    ktp: "1234567890",
-    tier: "Bronze",
-    transactions: []
-  },
-  {
-    id: "002",
-    name: "Budi Santoso",
-    birthdate: "1992-03-15",
-    phone: "08234567890",
-    email: "budi@example.com",
-    ktp: "0987654321",
-    tier: "Silver",
-    transactions: []
-  }
-];
+// Your Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyDNvgS_PqEHU3llqHt0XHN30jJgiQWLkdc",
+  authDomain: "e-loyalty-12563.firebaseapp.com",
+  projectId: "e-loyalty-12563",
+  storageBucket: "e-loyalty-12563.firebasestorage.app",
+    messagingSenderId: "3887061029",
+    appId: "1:3887061029:web:f9c238731d7e6dd5fb47cc",
+    measurementId: "G-966P8W06W2"
+  };
 
-if (!localStorage.getItem("membersData")) {
-  localStorage.setItem("membersData", JSON.stringify(members));
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+
+// Fetch members from Firestore
+async function fetchMembers() {
+  const snapshot = await db.collection("members").get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-function saveMembers() {
-  localStorage.setItem("membersData", JSON.stringify(members));
+// Save member to Firestore
+function saveMember(member) {
+  return db.collection("members").doc(member.id).set(member);
 }
 
-// Load or initialize tier settings
-let tierSettings = JSON.parse(localStorage.getItem("tierSettings")) || {
-  bronzeToSilverMonth: 300000,
-  bronzeToSilverYear: 1200000,
-  silverMaintainYear: 300000,
-  silverToGoldMonth: 1000000,
-  silverToGoldYear: 3000000,
-  goldMaintainYear: 1500000
-};
-
-function saveTierSettings() {
-  localStorage.setItem("tierSettings", JSON.stringify(tierSettings));
+// Delete member
+function deleteMember(id) {
+  return db.collection("members").doc(id).delete();
 }
 
 // -------- INDEX PAGE --------
 if (document.getElementById("memberList")) {
-  renderMembers();
-checkUpcomingBirthdays();
+  db.collection("members").onSnapshot(snapshot => {
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderMembers(members);
+  checkUpcomingBirthdays(members);
+});
+  checkUpcomingBirthdays();
 
-function checkUpcomingBirthdays() {
+  document.getElementById("searchInput").addEventListener("input", async (e) => {
+    const members = await fetchMembers();
+    renderMembers(members, e.target.value);
+  });
+
+  function renderMembers(members, filter = "") {
+    const list = document.getElementById("memberList");
+    list.innerHTML = "";
+    const filtered = members.filter(m =>
+      m.name.toLowerCase().includes(filter.toLowerCase())
+    );
+    filtered.forEach(member => {
+      const card = document.createElement("div");
+      card.className = "member-card";
+      card.innerHTML = `<span class="tier-${member.tier.toLowerCase()}">●</span> ${member.name} (${member.tier})`;
+      card.onclick = () => {
+        window.location.href = `details.html?id=${member.id}`;
+      };
+      list.appendChild(card);
+    });
+  }
+
+  async function checkUpcomingBirthdays(members) {
   const today = new Date();
   const banner = document.getElementById("birthdayBanner");
   const messageSpan = document.getElementById("birthdayMessage");
   if (!banner || !messageSpan) return;
 
   let messages = [];
-
   members.forEach(member => {
     if (!member.birthdate) return;
     const birth = new Date(member.birthdate);
     birth.setFullYear(today.getFullYear());
-
     const diff = (birth - today) / (1000 * 60 * 60 * 24);
     const dateStr = birth.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
@@ -80,48 +91,58 @@ function checkUpcomingBirthdays() {
   }
 }
 
-  document.getElementById("searchInput").addEventListener("input", e => {
-    renderMembers(e.target.value);
-  });
+// -------- ADD PAGE --------
+if (document.getElementById("addMemberBtn")) {
+  document.getElementById("addMemberBtn").addEventListener("click", async () => {
+    const name = document.getElementById("newName").value.trim();
+    const birthdate = document.getElementById("newBirthdate").value;
+    const phone = document.getElementById("newPhone").value;
+    const email = document.getElementById("newEmail").value;
+    const ktp = document.getElementById("newKTP").value;
+    const tier = document.getElementById("newTier").value;
 
-  function renderMembers(filter = "") {
-    const list = document.getElementById("memberList");
-    list.innerHTML = "";
-    const filtered = members.filter(m =>
-      m.name.toLowerCase().includes(filter.toLowerCase())
-    );
-    filtered.forEach(member => {
-      const card = document.createElement("div");
-      card.className = "member-card";
-      card.innerHTML = `<span class="tier-${member.tier.toLowerCase()}">●</span> ${member.name} (${member.tier})`;
-      card.onclick = () => {
-        window.location.href = `details.html?id=${member.id}`;
-      };
-      list.appendChild(card);
-    });
-  }
+    if (!name) {
+      alert("Name is required.");
+      return;
+    }
+
+    const newMember = {
+      id: Date.now().toString(),
+      name,
+      birthdate,
+      phone,
+      email,
+      ktp,
+      tier,
+      transactions: []
+    };
+
+    await saveMember(newMember);
+    alert(`✅ ${name} added!`);
+    window.location.href = "index.html";
+  });
 }
 
 // -------- DETAILS PAGE --------
 if (document.getElementById("memberDetails")) {
   const params = new URLSearchParams(window.location.search);
   const memberId = params.get("id");
-  const member = members.find(m => m.id === memberId);
 
-  if (!member) {
-    document.getElementById("memberDetails").innerHTML = "<p>Member not found.</p>";
-  } else {
-    renderDetails(member);
-  }
+  db.collection("members").doc(memberId).get().then(doc => {
+    if (!doc.exists) {
+      document.getElementById("memberDetails").innerHTML = "<p>Member not found.</p>";
+    } else {
+      renderDetails({ id: doc.id, ...doc.data() });
+    }
+  });
 
-  function renderDetails(member) {
+  async function renderDetails(member) {
     const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
     const lastYear = thisYear - 1;
 
     let monthly = 0, yearly = 0, lastYearTotal = 0, full = 0;
-
     member.transactions.forEach(tx => {
       const date = new Date(tx.date);
       full += tx.amount;
@@ -131,14 +152,6 @@ if (document.getElementById("memberDetails")) {
       }
       if (date.getFullYear() === lastYear) lastYearTotal += tx.amount;
     });
-
-    const isJanFirst = now.getMonth() === 0 && now.getDate() === 1;
-    const upgraded = tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst);
-    if (upgraded) {
-      saveMembers();
-      location.reload();
-      return;
-    }
 
     document.getElementById("memberDetails").innerHTML = `
       <h2>${member.name}</h2>
@@ -165,7 +178,7 @@ if (document.getElementById("memberDetails")) {
       </button>
     `;
 
-    document.getElementById("addTxBtn").addEventListener("click", () => {
+    document.getElementById("addTxBtn").addEventListener("click", async () => {
       const amount = parseFloat(document.getElementById("txAmount").value);
       const file = document.getElementById("txFile").files[0];
 
@@ -182,26 +195,27 @@ if (document.getElementById("memberDetails")) {
 
       if (file) {
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
           tx.fileData = reader.result;
           member.transactions.push(tx);
-          saveMembers();
+await updateTier(member);
+await saveMember(member);
           alert("✅ Transaction added with file!");
           location.reload();
         };
         reader.readAsDataURL(file);
       } else {
         member.transactions.push(tx);
-        saveMembers();
+await updateTier(member);
+await saveMember(member);
         alert("✅ Transaction added!");
         location.reload();
       }
     });
 
-    document.getElementById("deleteMemberBtn").addEventListener("click", () => {
+    document.getElementById("deleteMemberBtn").addEventListener("click", async () => {
       if (confirm(`Are you sure you want to delete ${member.name}?`)) {
-        members = members.filter(m => m.id !== member.id);
-        saveMembers();
+        await deleteMember(member.id);
         alert("🗑 Member deleted.");
         window.location.href = "index.html";
       }
@@ -330,6 +344,24 @@ function exportJSON() {
   a.href = url;
   a.download = "13e-members-backup.json";
   a.click();
+}
+
+async function updateTier(member) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const yearTotal = member.transactions
+    .filter(tx => new Date(tx.date).getFullYear() === currentYear)
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  let newTier = "Bronze";
+  if (yearTotal >= 1000000) newTier = "Gold";
+  else if (yearTotal >= 500000) newTier = "Silver";
+
+  if (member.tier !== newTier) {
+    member.tier = newTier;
+    await db.collection("members").doc(member.id).update({ tier: newTier });
+    console.log(`${member.name} upgraded to ${newTier}`);
+  }
 }
 
 
