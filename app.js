@@ -252,8 +252,9 @@ function tryAutoUpgrade(member, monthly, yearly, lastYear, isJanFirst) {
 }
 
 // -------- ADD PAGE --------
-if (document.getElementById("addMemberBtn")) {
-  document.getElementById("addMemberBtn").addEventListener("click", () => {
+// -------- ADD PAGE (safe fallback for extra page load) --------
+if (document.getElementById("addMemberBtn") && typeof saveMember === "function") {
+  document.getElementById("addMemberBtn").addEventListener("click", async () => {
     const name = document.getElementById("newName").value.trim();
     const birthdate = document.getElementById("newBirthdate").value;
     const phone = document.getElementById("newPhone").value;
@@ -277,8 +278,7 @@ if (document.getElementById("addMemberBtn")) {
       transactions: []
     };
 
-    members.push(newMember);
-    saveMembers();
+    await saveMember(newMember); // ✅ Writes to Firestore
     alert(`✅ ${name} added!`);
     window.location.href = "index.html";
   });
