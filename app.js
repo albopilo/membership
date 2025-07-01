@@ -25,14 +25,7 @@ function deleteMember(id) {
 }
 
 // -------- INDEX PAGE --------
-let tierSettings = {
-  bronzeToSilverMonth: 50000,
-  bronzeToSilverYear: 500000,
-  silverToGoldMonth: 100000,
-  silverToGoldYear: 1000000,
-  silverMaintainYear: 400000,
-  goldMaintainYear: 800000
-};
+let tierSettings = {}; // declare once only, near the top
 
 const settingsRef = db.collection("settings").doc("tierThresholds");
 
@@ -41,16 +34,16 @@ async function loadTierSettingsFromCloud() {
     const doc = await settingsRef.get();
     if (doc.exists) {
       tierSettings = doc.data();
-      console.log("✅ Tier settings loaded from cloud:", tierSettings);
+      console.log("✅ Loaded tier settings:", tierSettings);
     } else {
-      console.warn("⚠️ No tier settings found in Firestore. Using defaults.");
+      console.warn("⚠️ No cloud settings found. Using blank defaults.");
     }
   } catch (err) {
-    console.error("Failed to load tier settings:", err);
+    console.error("🔥 Failed to load settings:", err);
   }
 }
 
-loadTierSettingsFromCloud(); // Call it once at app start
+loadTierSettingsFromCloud();
 
 if (document.getElementById("memberList")) {
   // Live updates using Firestore's onSnapshot
