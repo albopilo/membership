@@ -25,7 +25,7 @@ function deleteMember(id) {
 }
 
 // -------- INDEX PAGE --------
-let tierSettings = {}; // declare once only, near the top
+let tierSettings = {}; // declare once globally
 
 const settingsRef = db.collection("settings").doc("tierThresholds");
 
@@ -33,13 +33,11 @@ async function loadTierSettingsFromCloud() {
   try {
     const doc = await settingsRef.get();
     if (doc.exists) {
-      tierSettings = doc.data();
-      console.log("✅ Loaded tier settings:", tierSettings);
-    } else {
-      console.warn("⚠️ No cloud settings found. Using blank defaults.");
+      tierSettings = doc.data(); // ← NO 'let' or 'const' here
+      console.log("✅ Loaded cloud settings", tierSettings);
     }
   } catch (err) {
-    console.error("🔥 Failed to load settings:", err);
+    console.error("⚠️ Error loading tier settings", err);
   }
 }
 
@@ -376,14 +374,6 @@ function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
 }
 
 // ⚙️ Load + Save tier threshold settings to localStorage
-let tierSettings = JSON.parse(localStorage.getItem("tierSettings")) || {
-  bronzeToSilverMonth: 50000,
-  bronzeToSilverYear: 500000,
-  silverToGoldMonth: 100000,
-  silverToGoldYear: 1000000,
-  silverMaintainYear: 400000,
-  goldMaintainYear: 800000
-};
 
 function saveTierSettings() {
   localStorage.setItem("tierSettings", JSON.stringify(tierSettings));
