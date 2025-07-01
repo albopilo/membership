@@ -1,24 +1,32 @@
-// Firebase config
+// Your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyDNvgS_PqEHU3llqHt0XHN30jJgiQWLkdc",
   authDomain: "e-loyalty-12563.firebaseapp.com",
   projectId: "e-loyalty-12563",
-  storageBucket: "e-loyalty-12563.appspot.com", // ✅ corrected domain
-  messagingSenderId: "3887061029",
-  appId: "1:3887061029:web:f9c238731d7e6dd5fb47cc",
-  measurementId: "G-966P8W06W2"
-};
+  storageBucket: "e-loyalty-12563.firebasestorage.app",
+    messagingSenderId: "3887061029",
+    appId: "1:3887061029:web:f9c238731d7e6dd5fb47cc",
+    measurementId: "G-966P8W06W2"
+  };
 
-// Initialize Firebase (compat version)
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+// Fetch members from Firestore
+async function fetchMembers() {
+  const snapshot = await db.collection("members").get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
 
 // Save member to Firestore
 function saveMember(member) {
-  if (!member.transactions) member.transactions = [];
+  if (!member.transactions) {
+    member.transactions = [];
+  }
   return db.collection("members").doc(member.id).set(member);
 }
-
 // Delete member
 function deleteMember(id) {
   return db.collection("members").doc(id).delete();
@@ -26,14 +34,13 @@ function deleteMember(id) {
 
 // -------- INDEX PAGE --------
 if (document.getElementById("memberList")) {
-  // Live updates using Firestore's onSnapshot
   db.collection("members").onSnapshot(snapshot => {
-    const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    renderMembers(members);
-    checkUpcomingBirthdays(members);
-  });
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderMembers(members);
+  checkUpcomingBirthdays(members);
+});
+  checkUpcomingBirthdays();
 
-  // Real-time search
   document.getElementById("searchInput").addEventListener("input", async (e) => {
     const members = await fetchMembers();
     renderMembers(members, e.target.value);
@@ -56,33 +63,32 @@ if (document.getElementById("memberList")) {
     });
   }
 
-  function checkUpcomingBirthdays(members) {
-    const today = new Date();
-    const banner = document.getElementById("birthdayBanner");
-    const messageSpan = document.getElementById("birthdayMessage");
-    if (!banner || !messageSpan) return;
+  async function checkUpcomingBirthdays(members) {
+  const today = new Date();
+  const banner = document.getElementById("birthdayBanner");
+  const messageSpan = document.getElementById("birthdayMessage");
+  if (!banner || !messageSpan) return;
 
-    let messages = [];
-    members.forEach(member => {
-      if (!member.birthdate) return;
-      const birth = new Date(member.birthdate);
-      birth.setFullYear(today.getFullYear());
-      const diff = (birth - today) / (1000 * 60 * 60 * 24);
-      const dateStr = birth.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  let messages = [];
+  members.forEach(member => {
+    if (!member.birthdate) return;
+    const birth = new Date(member.birthdate);
+    birth.setFullYear(today.getFullYear());
+    const diff = (birth - today) / (1000 * 60 * 60 * 24);
+    const dateStr = birth.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-      if (diff === 0) {
-        messages.push(`🎈 Today only: <strong>${member.name}</strong> gets a birthday freebie! 🎁`);
-      } else if (diff >= -3 && diff <= 3) {
-        messages.push(`🎉 <strong>${member.name}</strong>'s birthday is on ${dateStr}!`);
-      }
-    });
-
-    if (messages.length > 0) {
-      banner.style.display = "block";
-      messageSpan.innerHTML = messages.join("<br>");
-    } else {
-      banner.style.display = "none";
+    if (diff === 0) {
+      messages.push(`🎈 Today only: <strong>${member.name}</strong> gets a birthday freebie! 🎁`);
+    } else if (diff >= -3 && diff <= 3) {
+      messages.push(`🎉 <strong>${member.name}</strong>'s birthday is on ${dateStr}!`);
     }
+  });
+
+  if (messages.length > 0) {
+    banner.style.display = "block";
+    messageSpan.innerHTML = messages.join("<br>");
+  } else {
+    banner.style.display = "none";
   }
 }
 
@@ -112,14 +118,9 @@ if (document.getElementById("addMemberBtn")) {
       transactions: []
     };
 
-    try {
-      await saveMember(newMember);
-      alert(`✅ ${name} added!`);
-      window.location.href = "index.html";
-    } catch (error) {
-      console.error("Failed to save member:", error);
-      alert("⚠️ Failed to add member. Please try again.");
-    }
+    await saveMember(newMember);
+    alert(`✅ ${name} added!`);
+    window.location.href = "index.html";
   });
 }
 
@@ -152,9 +153,6 @@ if (document.getElementById("memberDetails")) {
       }
       if (date.getFullYear() === lastYear) lastYearTotal += tx.amount;
     });
-
-    const isJanFirst = (now.getMonth() === 0 && now.getDate() === 1);
-    tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst);
 
     document.getElementById("memberDetails").innerHTML = `
       <h2>${member.name}</h2>
@@ -201,16 +199,16 @@ if (document.getElementById("memberDetails")) {
         reader.onload = async () => {
           tx.fileData = reader.result;
           member.transactions.push(tx);
-          await updateTier(member);
-          await saveMember(member);
+await updateTier(member);
+await saveMember(member);
           alert("✅ Transaction added with file!");
           location.reload();
         };
         reader.readAsDataURL(file);
       } else {
         member.transactions.push(tx);
-        await updateTier(member);
-        await saveMember(member);
+await updateTier(member);
+await saveMember(member);
         alert("✅ Transaction added!");
         location.reload();
       }
@@ -224,99 +222,9 @@ if (document.getElementById("memberDetails")) {
       }
     });
   }
-}
 
-// 🔁 Export transactions as CSV
-async function exportAllTransactions() {
-  const snapshot = await db.collection("members").get();
-  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  let csv = "Member ID,Member Name,Date,Amount,File Attached\n";
-
-  members.forEach(member => {
-    (member.transactions || []).forEach(tx => {
-      const date = new Date(tx.date).toLocaleDateString();
-      const amount = tx.amount;
-      const fileAttached = tx.fileData ? "Yes" : "No";
-      csv += `"${member.id}","${member.name}","${date}",${amount},"${fileAttached}"\n`;
-    });
-  });
-
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "13e-transactions.csv";
-  a.click();
-}
-
-// 📷 Export CSV with embedded base64 image
-async function exportTransactionsWithImages() {
-  const snapshot = await db.collection("members").get();
-  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  const rows = [["Member ID", "Member Name", "Date", "Amount", "Image"]];
-
-  members.forEach(member => {
-    (member.transactions || []).forEach(tx => {
-      const row = [
-        member.id,
-        member.name,
-        new Date(tx.date).toLocaleDateString(),
-        tx.amount,
-        tx.fileData || ""
-      ];
-      rows.push(row);
-    });
-  });
-
-  const csvContent = rows.map(row =>
-    row.map(cell =>
-      typeof cell === "string" && cell.includes(",") ? `"${cell}"` : cell
-    ).join(",")
-  ).join("\n");
-
-  const blob = new Blob([csvContent], { type: "text/csv" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "13e-transactions-with-images.csv";
-  link.click();
-}
-
-// 💾 Export full data as JSON
-async function exportJSON() {
-  const snapshot = await db.collection("members").get();
-  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  const blob = new Blob([JSON.stringify(members, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "13e-members-backup.json";
-  a.click();
-}
-
-// 📈 Auto-calculate yearly total and assign tier
-async function updateTier(member) {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const yearTotal = (member.transactions || [])
-    .filter(tx => new Date(tx.date).getFullYear() === currentYear)
-    .reduce((sum, tx) => sum + tx.amount, 0);
-
-  let newTier = "Bronze";
-  if (yearTotal >= 1000000) newTier = "Gold";
-  else if (yearTotal >= 500000) newTier = "Silver";
-
-  if (member.tier !== newTier) {
-    member.tier = newTier;
-    await db.collection("members").doc(member.id).update({ tier: newTier });
-    console.log(`${member.name} upgraded to ${newTier}`);
-  }
-}
-
-// 🏅 Tier upgrade/demotion logic
 function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
+  // Fallback if tierSettings is not defined
   const thresholds = typeof tierSettings !== "undefined" ? tierSettings : {
     bronzeToSilverMonth: 50000,
     bronzeToSilverYear: 500000,
@@ -355,7 +263,98 @@ function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
   return upgraded;
 }
 
-// ⚙️ Load + Save tier threshold settings to localStorage
+
+async function exportAllTransactions() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  let csv = "Member ID,Member Name,Date,Amount,File Attached\n";
+
+  members.forEach(member => {
+    (member.transactions || []).forEach(tx => {
+      const date = new Date(tx.date).toLocaleDateString();
+      const amount = tx.amount;
+      const fileAttached = tx.fileData ? "Yes" : "No";
+      csv += `"${member.id}","${member.name}","${date}",${amount},"${fileAttached}"\n`;
+    });
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "13e-transactions.csv";
+  a.click();
+}
+
+async function exportTransactionsWithImages() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const rows = [
+    ["Member ID", "Member Name", "Date", "Amount", "Image"]
+  ];
+
+  members.forEach(member => {
+    (member.transactions || []).forEach(tx => {
+      const row = [
+        member.id,
+        member.name,
+        new Date(tx.date).toLocaleDateString(),
+        tx.amount,
+        tx.fileData || ""
+      ];
+      rows.push(row);
+    });
+  });
+
+  const csvContent = rows.map(row =>
+    row.map(cell =>
+      typeof cell === "string" && cell.includes(",")
+        ? `"${cell}"`
+        : cell
+    ).join(",")
+  ).join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "13e-transactions-with-images.csv";
+  link.click();
+}
+
+async function exportJSON() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  const blob = new Blob([JSON.stringify(members, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "13e-members-backup.json";
+  a.click();
+}
+
+async function updateTier(member) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const yearTotal = member.transactions
+    .filter(tx => new Date(tx.date).getFullYear() === currentYear)
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  let newTier = "Bronze";
+  if (yearTotal >= 1000000) newTier = "Gold";
+  else if (yearTotal >= 500000) newTier = "Silver";
+
+  if (member.tier !== newTier) {
+    member.tier = newTier;
+    await db.collection("members").doc(member.id).update({ tier: newTier });
+    console.log(`${member.name} upgraded to ${newTier}`);
+  }
+}
+
+
+// SETTINGS.HTML → Load + save tier thresholds
 let tierSettings = JSON.parse(localStorage.getItem("tierSettings")) || {
   bronzeToSilverMonth: 50000,
   bronzeToSilverYear: 500000,
@@ -387,6 +386,6 @@ if (document.getElementById("saveSettingsBtn")) {
 
     saveTierSettings();
     alert("✅ Settings saved!");
-  });
-}
-
+  });//
+//
+}//	
