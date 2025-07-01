@@ -253,44 +253,15 @@ function tryAutoUpgrade(member, monthly, yearly, lastYear, isJanFirst) {
   return false;
 }
 
-// -------- ADD PAGE --------
-// -------- ADD PAGE (safe fallback for extra page load) --------
-if (document.getElementById("addMemberBtn") && typeof saveMember === "function") {
-  document.getElementById("addMemberBtn").addEventListener("click", async () => {
-    const name = document.getElementById("newName").value.trim();
-    const birthdate = document.getElementById("newBirthdate").value;
-    const phone = document.getElementById("newPhone").value;
-    const email = document.getElementById("newEmail").value;
-    const ktp = document.getElementById("newKTP").value;
-    const tier = document.getElementById("newTier").value;
 
-    if (!name) {
-      alert("Name is required.");
-      return;
-    }
+async function exportAllTransactions() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    const newMember = {
-      id: Date.now().toString(),
-      name,
-      birthdate,
-      phone,
-      email,
-      ktp,
-      tier,
-      transactions: []
-    };
-
-    await saveMember(newMember); // ✅ Writes to Firestore
-    alert(`✅ ${name} added!`);
-    window.location.href = "index.html";
-  });
-}
-
-function exportAllTransactions() {
   let csv = "Member ID,Member Name,Date,Amount,File Attached\n";
 
   members.forEach(member => {
-    member.transactions.forEach(tx => {
+    (member.transactions || []).forEach(tx => {
       const date = new Date(tx.date).toLocaleDateString();
       const amount = tx.amount;
       const fileAttached = tx.fileData ? "Yes" : "No";
@@ -306,19 +277,22 @@ function exportAllTransactions() {
   a.click();
 }
 
-function exportTransactionsWithImages() {
+async function exportTransactionsWithImages() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
   const rows = [
     ["Member ID", "Member Name", "Date", "Amount", "Image"]
   ];
 
   members.forEach(member => {
-    member.transactions.forEach(tx => {
+    (member.transactions || []).forEach(tx => {
       const row = [
         member.id,
         member.name,
         new Date(tx.date).toLocaleDateString(),
         tx.amount,
-        tx.fileData ? tx.fileData : ""
+        tx.fileData || ""
       ];
       rows.push(row);
     });
@@ -339,7 +313,10 @@ function exportTransactionsWithImages() {
   link.click();
 }
 
-function exportJSON() {
+async function exportJSON() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
   const blob = new Blob([JSON.stringify(members, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
