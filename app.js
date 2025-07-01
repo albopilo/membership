@@ -20,6 +20,46 @@ function saveMember(member) {
   return db.collection("members").doc(member.id).set(member);
 }
 
+
+function extractTotalAmount(ocrText) {
+  const lines = ocrText.split('\n').map(l => l.trim()).filter(Boolean);
+  const contextMatches = [];
+  const fallbackMatches = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].toLowerCase();
+
+    // 🔍 Look for keywords like "grand total", "jumlah bayar", etc.
+    if (line.includes("grand total") || line.includes("jumlah bayar") || line.includes("total bayar")) {
+      for (let j = -1; j <= 3; j++) {
+        const check = lines[i + j] || "";
+        const matches = check.match(/(\d{1,3}(?:[.,]\d{3})+)/g);
+        if (matches) {
+          matches.forEach(str => {
+            const num = parseInt(str.replace(/[^\d]/g, ""));
+            if (!isNaN(num) && num >= 1000) contextMatches.push(num);
+          });
+        }
+      }
+    }
+
+    // 🛡 Fallback: gather all big numbers from all lines
+    const globalMatches = line.match(/(\d{1,3}(?:[.,]\d{3})+)/g);
+    if (globalMatches) {
+      globalMatches.forEach(str => {
+        const num = parseInt(str.replace(/[^\d]/g, ""));
+        if (!isNaN(num) && num >= 1000) fallbackMatches.push(num);
+      });
+    }
+  }
+
+  // 🎯 Prioritize context first, then fallback
+  if (contextMatches.length > 0) return Math.max(...contextMatches);
+  if (fallbackMatches.length > 0) return Math.max(...fallbackMatches);
+  return null;
+}
+
+
 function isSameDay(d1, d2) {
   if (!d1 || !d2) return false;
   const a = new Date(d1);
@@ -77,17 +117,22 @@ async function loadTierSettingsFromCloud() {
 loadTierSettingsFromCloud();
 
 if (document.getElementById("memberList")) {
-  db.collection("members").get().then(snapshot => {
+  try {
+  db.collection("members").onSnapshot(snapshot => {
     const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     renderMembers(members);
     checkUpcomingBirthdays(members);
   });
+} catch (err) {
+  console.error("Real-time listener failed:", err);
 }
 
   document.getElementById("searchInput").addEventListener("input", async (e) => {
     const members = await fetchMembers();
     renderMembers(members, e.target.value);
   });
+}
+
 
   const tierBenefits = {
     Bronze: [
@@ -165,7 +210,6 @@ if (document.getElementById("memberList")) {
       banner.style.display = "none";
     }
   }
-}
 
 // -------- ➕ ADD PAGE --------
 if (document.getElementById("addMemberBtn")) {
@@ -264,6 +308,8 @@ member.redeemablePoints = member.redeemablePoints || 0;
     <h3>Add Transaction</h3>
     <input type="number" id="txAmount" placeholder="Amount Spent" />
     <input type="file" id="txFile" accept="image/*,.pdf" />
+
+<p id="ocrStatus" style="color:#777; font-style:italic;"></p>
     <button id="addTxBtn">Add</button><br><br>
 
     <button id="deleteMemberBtn" style="background-color:crimson; color:white;">
@@ -274,32 +320,44 @@ member.redeemablePoints = member.redeemablePoints || 0;
 // 🔽 Add this OCR handler immediately after setting the HTML:
 setTimeout(() => {
   const txFile = document.getElementById("txFile");
-  if (!txFile) return;
+  const ocrStatus = document.getElementById("ocrStatus");
+  if (!txFile || !ocrStatus) return;
 
   txFile.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    ocrStatus.textContent = "🔍 Scanning receipt… please wait";
+
     const reader = new FileReader();
     reader.onload = () => {
       Tesseract.recognize(reader.result, 'eng').then(result => {
-        const match = result.data.text.match(/(?:grand\s*)?total\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
+console.log("🧾 OCR TEXT:\n", result.data.text);
+
+const extracted = extractTotalAmount(result.data.text);
+
+if (extracted !== null) {
+  document.getElementById("txAmount").value = extracted;
+  alert(`✅ Auto-filled: Rp${extracted.toLocaleString()}`);
+} else {
+  alert("⚠️ Still couldn't detect a valid total. Try re-scanning or enter manually.");
+}
+        const match = result.data.text.match(/(?:grand|jumlah)?\s*total(?: bayar)?\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
         if (match) {
           const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
           document.getElementById("txAmount").value = extracted;
-          alert(`🧾 OCR auto-filled amount: Rp${extracted.toLocaleString()}`);
+          ocrStatus.textContent = `✅ Auto-filled: Rp${extracted.toLocaleString()}`;
         } else {
-          alert(`⚠️ Couldn't detect a total amount in the receipt.`);
+          ocrStatus.textContent = "⚠️ Couldn't detect a total amount in the receipt.";
         }
       }).catch(err => {
         console.error("OCR error:", err);
-        alert("⚠️ Failed to scan receipt.");
+        ocrStatus.textContent = "❌ Failed to scan receipt.";
       });
     };
     reader.readAsDataURL(file);
   });
-}, 200); // Wait for the DOM to render first
-
+}, 200);
 
   // ➕ Add Transaction Logic
   document.getElementById("addTxBtn").addEventListener("click", async () => {
@@ -367,35 +425,6 @@ setTimeout(() => {
       await finishTransaction();
     }
   });
-
-// ✅ Place the OCR handler right here
-setTimeout(() => {
-  const txFile = document.getElementById("txFile");
-  if (txFile) {
-    txFile.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = () => {
-        Tesseract.recognize(reader.result, 'eng').then(result => {
-          const match = result.data.text.match(/(?:grand\s*)?total\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
-          if (match) {
-            const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
-            document.getElementById("txAmount").value = extracted;
-            alert(`🧾 OCR auto-filled amount: Rp${extracted.toLocaleString()}`);
-          } else {
-            alert(`⚠️ Couldn't detect a total amount in the receipt.`);
-          }
-        }).catch(err => {
-          console.error("OCR error:", err);
-          alert("⚠️ Failed to scan receipt.");
-        });
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-}, 500); // Let the DOM settle
 
 
   // 🗑 Admin Delete Button
