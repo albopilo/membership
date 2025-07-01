@@ -17,6 +17,8 @@ const db = firebase.firestore();
 function saveMember(member) {
   if (!member.transactions) member.transactions = [];
   return db.collection("members").doc(member.id).set(member);
+if (!member.upgradeDate) member.upgradeDate = null;
+if (!member.yearlySinceUpgrade) member.yearlySinceUpgrade = 0;
 }
 
 // Delete member
@@ -182,6 +184,10 @@ if (document.getElementById("memberDetails")) {
   });
 
   async function renderDetails(member) {
+
+if (typeof member.yearlySinceUpgrade !== "number") {
+  member.yearlySinceUpgrade = 0;
+}
     const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
@@ -202,7 +208,7 @@ if (document.getElementById("memberDetails")) {
 
 console.log("🧪 Yearly total:", yearly);
 console.log("🧪 Threshold for Gold:", tierSettings.silverToGoldYear);
-    tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst);
+await updateTier(member);
 
     document.getElementById("memberDetails").innerHTML = `
       <h2>${member.name}</h2>
@@ -212,7 +218,8 @@ console.log("🧪 Threshold for Gold:", tierSettings.silverToGoldYear);
         <li>Phone: ${member.phone || "-"}</li>
         <li>Email: ${member.email || "-"}</li>
         <li>KTP: ${member.ktp || "-"}</li>
-        <li>This Month: Rp${monthly.toLocaleString()}</li>
+<li>Spending Since Upgrade (This Month): Rp${(member.monthlySinceUpgrade ?? 0).toLocaleString()}</li>
+<li>Spending Since Upgrade (This Year): Rp${(member.yearlySinceUpgrade ?? 0).toLocaleString()}</li>
         <li>This Year: Rp${yearly.toLocaleString()}</li>
         <li>Last Year: Rp${lastYearTotal.toLocaleString()}</li>
         <li>All Time: Rp${full.toLocaleString()}</li>
@@ -241,41 +248,39 @@ document.getElementById("deleteMemberBtn").addEventListener("click", async () =>
     window.location.href = "index.html";
   }
 });
+document.getElementById("addTxBtn").addEventListener("click", async () => {
+  const amount = parseFloat(document.getElementById("txAmount").value);
+  const file = document.getElementById("txFile").files[0];
 
-    document.getElementById("addTxBtn").addEventListener("click", async () => {
-      const amount = parseFloat(document.getElementById("txAmount").value);
-      const file = document.getElementById("txFile").files[0];
+  if (isNaN(amount) || amount <= 0) {
+    alert("Enter a valid amount.");
+    return;
+  }
 
-      if (isNaN(amount) || amount <= 0) {
-        alert("Enter a valid amount.");
-        return;
-      }
+  const tx = {
+    date: new Date().toISOString(),
+    amount,
+    fileData: null
+  };
 
-      const tx = {
-        date: new Date().toISOString(),
-        amount,
-        fileData: null
-      };
+  const finishTransaction = async () => {
+    member.transactions.push(tx);
+    const upgraded = await updateTier(member);
+    if (!upgraded) await saveMember(member); // only save if no upgrade triggered
+    location.reload();
+  };
 
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          tx.fileData = reader.result;
-          member.transactions.push(tx);
-          await updateTier(member);
-          await saveMember(member);
-          alert("✅ Transaction added with file!");
-          location.reload();
-        };
-        reader.readAsDataURL(file);
-      } else {
-        member.transactions.push(tx);
-        await updateTier(member);
-        await saveMember(member);
-        alert("✅ Transaction added!");
-        location.reload();
-      }
-    });
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      tx.fileData = reader.result;
+      await finishTransaction();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    await finishTransaction();
+  }
+});
   }
 }
 
@@ -356,27 +361,90 @@ async function exportJSON() {
 async function updateTier(member) {
   const now = new Date();
   const currentYear = now.getFullYear();
-  const yearTotal = (member.transactions || [])
-    .filter(tx => new Date(tx.date).getFullYear() === currentYear)
-    .reduce((sum, tx) => sum + tx.amount, 0);
+  const currentMonth = now.getMonth();
+  const upgradeDate = member.upgradeDate ? new Date(member.upgradeDate) : null;
 
-  let newTier = "Bronze";
-  if (yearTotal >= 1000000) newTier = "Gold";
-  else if (yearTotal >= 500000) newTier = "Silver";
+  let yearTotal = 0;
+  let monthlyTotal = 0;
+  let yearlySinceUpgrade = 0;
+  let monthlySinceUpgrade = 0;
 
-  if (member.tier !== newTier) {
+  // Calculate totals from transaction history
+  (member.transactions || []).forEach(tx => {
+    const txDate = new Date(tx.date);
+    if (txDate.getFullYear() === currentYear) {
+      yearTotal += tx.amount;
+      if (txDate.getMonth() === currentMonth) {
+        monthlyTotal += tx.amount;
+      }
+
+      if (upgradeDate && txDate > upgradeDate) {
+        yearlySinceUpgrade += tx.amount;
+        if (txDate.getMonth() === currentMonth) {
+          monthlySinceUpgrade += tx.amount;
+        }
+      }
+    }
+  });
+
+  // If this is the first upgrade check
+  if (!upgradeDate) {
+    yearlySinceUpgrade = yearTotal;
+    monthlySinceUpgrade = monthlyTotal;
+  }
+
+  member.yearlySinceUpgrade = yearlySinceUpgrade;
+  member.monthlySinceUpgrade = monthlySinceUpgrade;
+
+  // Thresholds pulled from Firestore or fallback
+  const thresholds = {
+    bronzeToSilverMonth: tierSettings.bronzeToSilverMonth ?? 300000,
+    bronzeToSilverYear: tierSettings.bronzeToSilverYear ?? 1200000,
+    silverToGoldMonth: tierSettings.silverToGoldMonth ?? 1250000,
+    silverToGoldYear: tierSettings.silverToGoldYear ?? 4000000
+  };
+
+  const currentTier = (member.tier || "Bronze").trim();
+  let newTier = currentTier;
+
+  // Upgrade logic — monthly or yearly spending since last upgrade
+  if (
+    currentTier === "Bronze" &&
+    (monthlySinceUpgrade >= thresholds.bronzeToSilverMonth ||
+     yearlySinceUpgrade >= thresholds.bronzeToSilverYear)
+  ) {
+    newTier = "Silver";
+  } else if (
+    currentTier === "Silver" &&
+    (monthlySinceUpgrade >= thresholds.silverToGoldMonth ||
+     yearlySinceUpgrade >= thresholds.silverToGoldYear)
+  ) {
+    newTier = "Gold";
+  }
+
+  // If tier upgrade detected
+  if (newTier !== currentTier) {
     member.tier = newTier;
-    await db.collection("members").doc(member.id).update({ tier: newTier });
-    console.log(`${member.name} upgraded to ${newTier}`);
+    member.upgradeDate = now.toISOString();
+    member.yearlySinceUpgrade = 0;
+    member.monthlySinceUpgrade = 0;
+
+    await saveMember(member);
+    console.log(`🎉 ${member.name} upgraded to ${newTier}`);
+    return true;
+  } else {
+    // Even if not upgraded, keep "sinceUpgrade" totals in sync
+    await db.collection("members").doc(member.id).update({
+      yearlySinceUpgrade,
+      monthlySinceUpgrade
+    });
+    return false;
   }
 }
 
 // 🏅 Tier upgrade/demotion logic
 function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
-
-if (!member.tier) {
-  member.tier = "Bronze";
-}
+  if (!member.tier) member.tier = "Bronze";
 
   const thresholds = {
     bronzeToSilverMonth: tierSettings.bronzeToSilverMonth ?? 50000,
@@ -395,8 +463,10 @@ if (!member.tier) {
       upgraded = true;
       alert(`${member.name} upgraded to Silver!`);
     }
-    return upgraded; // Prevent further upgrades
-  } else if (member.tier === "Silver") {
+    return upgraded; // Prevent going straight to Gold
+  }
+
+  if (member.tier === "Silver") {
     if (monthly >= thresholds.silverToGoldMonth || yearly >= thresholds.silverToGoldYear) {
       member.tier = "Gold";
       upgraded = true;
@@ -406,7 +476,9 @@ if (!member.tier) {
       upgraded = true;
       alert(`${member.name} demoted to Bronze.`);
     }
-  } else if (member.tier === "Gold") {
+  }
+
+  if (member.tier === "Gold") {
     if (isJanFirst && lastYearTotal < thresholds.goldMaintainYear) {
       member.tier = "Silver";
       upgraded = true;
@@ -414,7 +486,7 @@ if (!member.tier) {
     }
   }
 
-  console.log("🧪 Member tier after upgrade:", member.tier);
+  console.log("🧪 Member tier after auto-upgrade:", member.tier);
   return upgraded;
 }
 
