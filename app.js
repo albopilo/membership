@@ -222,34 +222,45 @@ await saveMember(member);
       }
     });
   }
-}
 
-function tryAutoUpgrade(member, monthly, yearly, lastYear, isJanFirst) {
+function tryAutoUpgrade(member, monthly, yearly, lastYearTotal, isJanFirst) {
+  // Fallback if tierSettings is not defined
+  const thresholds = typeof tierSettings !== "undefined" ? tierSettings : {
+    bronzeToSilverMonth: 50000,
+    bronzeToSilverYear: 500000,
+    silverToGoldMonth: 100000,
+    silverToGoldYear: 1000000,
+    silverMaintainYear: 400000,
+    goldMaintainYear: 800000
+  };
+
+  let upgraded = false;
+
   if (member.tier === "Bronze") {
-    if (monthly >= tierSettings.bronzeToSilverMonth || yearly >= tierSettings.bronzeToSilverYear) {
+    if (monthly >= thresholds.bronzeToSilverMonth || yearly >= thresholds.bronzeToSilverYear) {
       member.tier = "Silver";
+      upgraded = true;
       alert(`${member.name} upgraded to Silver!`);
-      return true;
     }
   } else if (member.tier === "Silver") {
-    if (monthly >= tierSettings.silverToGoldMonth || yearly >= tierSettings.silverToGoldYear) {
+    if (monthly >= thresholds.silverToGoldMonth || yearly >= thresholds.silverToGoldYear) {
       member.tier = "Gold";
+      upgraded = true;
       alert(`${member.name} upgraded to Gold!`);
-      return true;
-    }
-    if (isJanFirst && lastYear < tierSettings.silverMaintainYear) {
+    } else if (isJanFirst && lastYearTotal < thresholds.silverMaintainYear) {
       member.tier = "Bronze";
+      upgraded = true;
       alert(`${member.name} demoted to Bronze.`);
-      return true;
     }
   } else if (member.tier === "Gold") {
-    if (isJanFirst && lastYear < tierSettings.goldMaintainYear) {
+    if (isJanFirst && lastYearTotal < thresholds.goldMaintainYear) {
       member.tier = "Silver";
+      upgraded = true;
       alert(`${member.name} demoted to Silver.`);
-      return true;
     }
   }
-  return false;
+
+  return upgraded;
 }
 
 
