@@ -25,23 +25,29 @@ function deleteMember(id) {
 }
 
 // -------- INDEX PAGE --------
-let tierSettings = {}; // declare once globally
+const isAdmin = localStorage.getItem("isAdmin") === "true"; // Access mode
 
 const settingsRef = db.collection("settings").doc("tierThresholds");
+let tierSettings = {}; // Global shared tier settings
 
 async function loadTierSettingsFromCloud() {
   try {
     const doc = await settingsRef.get();
     if (doc.exists) {
-      tierSettings = doc.data(); // ← NO 'let' or 'const' here
-      console.log("✅ Loaded cloud settings", tierSettings);
+      tierSettings = doc.data();
+      console.log("✅ Loaded settings from Firestore:", tierSettings);
     }
   } catch (err) {
-    console.error("⚠️ Error loading tier settings", err);
+    console.error("⚠️ Failed to load settings:", err);
   }
 }
-
 loadTierSettingsFromCloud();
+
+document.getElementById("modeSelect").addEventListener("change", e => {
+  const selected = e.target.value;
+  localStorage.setItem("isAdmin", selected === "admin");
+  location.reload();
+});
 
 if (document.getElementById("memberList")) {
   // Live updates using Firestore's onSnapshot
@@ -197,6 +203,11 @@ if (document.getElementById("memberDetails")) {
       <button id="deleteMemberBtn" style="background-color:crimson; color:white;">
         🗑 Delete Member
       </button>
+
+if (!isAdmin) {
+  const delBtn = document.getElementById("deleteMemberBtn");
+if (!isAdmin && delBtn) delBtn.style.display = "none";
+}
     `;
 
     document.getElementById("addTxBtn").addEventListener("click", async () => {
@@ -273,24 +284,27 @@ async function exportTransactionsWithImages() {
   const snapshot = await db.collection("members").get();
   const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  const rows = [["Member ID", "Member Name", "Date", "Amount", "Image"]];
+  const rows = [
+    ["Member ID", "Member Name", "Date", "Amount", "Image"]
+  ];
 
   members.forEach(member => {
     (member.transactions || []).forEach(tx => {
-      const row = [
+      rows.push([
         member.id,
         member.name,
         new Date(tx.date).toLocaleDateString(),
         tx.amount,
         tx.fileData || ""
-      ];
-      rows.push(row);
+      ]);
     });
   });
 
   const csvContent = rows.map(row =>
     row.map(cell =>
-      typeof cell === "string" && cell.includes(",") ? `"${cell}"` : cell
+      typeof cell === "string" && cell.includes(",")
+        ? `"${cell}"`
+        : cell
     ).join(",")
   ).join("\n");
 
