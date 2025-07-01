@@ -374,4 +374,3 @@ if (document.getElementById("saveSettingsBtn")) {
     saveTierSettings();
     alert("✅ Settings saved!");
   });
-}
