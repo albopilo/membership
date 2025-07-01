@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Add New Member</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<h1>Add New Member</h1>
+
+<label>Name:</label><br>
+<input type="text" id="newName"><br>
+
+<label>Birthdate:</label><br>
+<input type="date" id="newBirthdate"><br>
+
+<label>Phone Number:</label><br>
+<input type="tel" id="newPhone"><br>
+
+<label>Email Address:</label><br>
+<input type="email" id="newEmail"><br>
+
+<label>KTP Document Number:</label><br>
+<input type="text" id="newKTP"><br>
+
+<label>Initial Tier:</label><br>
+<select id="newTier">
+  <option value="Bronze">Bronze</option>
+  <option value="Silver">Silver</option>
+  <option value="Gold">Gold</option>
+</select><br><br>
+
+<button id="addMemberBtn">Add Member</button>
+<button onclick="location.href='index.html'">← Cancel</button>
+
+<script src="app.js"></script>
+</body>
+</html>

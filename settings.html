@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Tier Settings</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Tier Settings</h1>
+
+  <label>Bronze → Silver (Monthly): Rp <input type="number" id="monthlyThreshold" /></label><br />
+  <label>Bronze → Silver (Yearly): Rp <input type="number" id="yearlyThreshold" /></label><br />
+  <label>Maintain Silver (Yearly): Rp <input type="number" id="maintainSilver" /></label><br />
+
+  <hr>
+  <label>Silver → Gold (Monthly): Rp <input type="number" id="silverToGoldMonth" /></label><br />
+  <label>Silver → Gold (Yearly): Rp <input type="number" id="silverToGoldYear" /></label><br />
+  <label>Maintain Gold (Yearly): Rp <input type="number" id="maintainGoldYear" /></label><br /><br />
+
+  <button id="saveSettingsBtn">Save Settings</button>
+  <button onclick="location.href='index.html'">← Back</button>
+
+  <script src="app.js"></script>
+</body>
+</html>

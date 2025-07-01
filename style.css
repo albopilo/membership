@@ -1,0 +1,40 @@
+body {
+  font-family: sans-serif;
+  margin: 20px;
+  background-color: #fff;
+  color: #333;
+}
+
+h1, h2, h3 {
+  color: #633;
+}
+
+button {
+  padding: 8px 12px;
+  margin: 6px 4px;
+  cursor: pointer;
+}
+
+input, select {
+  padding: 6px;
+  margin: 4px 0;
+  width: 240px;
+}
+
+.member-card {
+  padding: 12px;
+  background-color: #fafafa;
+  border: 1px solid #ddd;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.member-card:hover {
+  background-color: #f0f0f0;
+}
+
+.tier-bronze { color: #cd7f32; }
+.tier-silver { color: #c0c0c0; }
+.tier-gold { color: #ffd700; }
