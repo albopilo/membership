@@ -11,9 +11,8 @@ const firebaseConfig = {
 
 
 // Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 // Fetch members from Firestore
 async function fetchMembers() {
