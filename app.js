@@ -404,72 +404,7 @@ if (extracted !== null) {
   });
 }, 200);
 
-  // ➕ Add Transaction Logic
-  document.getElementById("addTxBtn").addEventListener("click", async () => {
 
-
-    const amount = parseFloat(document.getElementById("txAmount").value);
-    const file = document.getElementById("txFile").files[0];
-    if (isNaN(amount) || amount <= 0) {
-      alert("Enter a valid amount.");
-      return;
-    }
-
-    const todayStr = now.toISOString().split("T")[0];
-    const tier = member.tier;
-    const isBirthday = isSameDay(now, member.birthdate);
-
-    const rate =
-      tier === "Gold" && isBirthday
-        ? tierSettings.birthdayGoldCashbackRate ?? 30
-        : tier === "Gold"
-          ? tierSettings.goldCashbackRate ?? 5
-          : tier === "Silver"
-            ? tierSettings.silverCashbackRate ?? 5
-            : 0;
-
-    const cap =
-      tier === "Gold"
-        ? tierSettings.goldDailyCashbackCap ?? 30000
-        : tier === "Silver"
-          ? tierSettings.silverDailyCashbackCap ?? 15000
-          : 0;
-
-    const todayCashback = (member.transactions || [])
-      .filter(tx => tx.date?.startsWith(todayStr) && tx.cashback)
-      .reduce((sum, tx) => sum + tx.cashback, 0);
-
-    let cashback = Math.floor((amount * rate) / 100);
-    if (todayCashback + cashback > cap) {
-      cashback = Math.max(0, cap - todayCashback);
-    }
-
-    const tx = {
-      date: now.toISOString(),
-      amount,
-      cashback,
-      fileData: null
-    };
-
-    const finishTransaction = async () => {
-  member.transactions.push(tx);
-  member.redeemablePoints += cashback; // 👈 Add this here
-  const upgraded = await updateTier(member);
-  if (!upgraded) await saveMember(member);
-  location.reload();
-};
-
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        tx.fileData = reader.result;
-        await finishTransaction();
-      };
-      reader.readAsDataURL(file);
-    } else {
-      await finishTransaction();
-    }
-  });
 
 
   // 🗑 Admin Delete Button
