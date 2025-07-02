@@ -134,21 +134,48 @@ async function loadTierSettingsFromCloud() {
 }
 loadTierSettingsFromCloud();
 
-if (document.getElementById("memberList")) {
-  try {
-  db.collection("members").onSnapshot(snapshot => {
-    const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    renderMembers(members);
-    checkUpcomingBirthdays(members);
-  });
-} catch (err) {
-  console.error("Real-time listener failed:", err);
+let lastVisible = null;
+
+async function loadNextPage() {
+  let query = db.collection("members").orderBy("id").limit(20);
+  if (lastVisible) query = query.startAfter(lastVisible);
+
+  const snapshot = await query.get();
+  if (snapshot.empty) {
+    console.log("🚫 No more members to load.");
+    return; // Don’t re-render or update lastVisible
+
+if (snapshot.empty) {
+  document.getElementById("loadMoreBtn").disabled = true;
+  document.getElementById("loadMoreBtn").textContent = "✅ All loaded";
+  return; // ✅ this avoids rendering empty
+}
+  }
+
+  lastVisible = snapshot.docs[snapshot.docs.length - 1];
+
+  const newMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderMembers(newMembers);
 }
 
+if (document.getElementById("memberList")) {
+  try {
+    loadNextPage(); // 👈 This loads your first batch of 20
+  } catch (err) {
+    console.error("❌ Failed to load members:", err);
+  }
+
   document.getElementById("searchInput").addEventListener("input", async (e) => {
-    const members = await fetchMembers();
+    const members = await fetchMembers(); // optional: update for pagination
     renderMembers(members, e.target.value);
   });
+
+  const loadMoreBtn = document.getElementById("loadMoreBtn");
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener("click", () => {
+      loadNextPage(); // 👈 Load more when clicked
+    });
+  }
 }
 
 
@@ -174,6 +201,7 @@ if (document.getElementById("memberList")) {
   };
 
   function renderMembers(members, filter = "") {
+
     const list = document.getElementById("memberList");
     list.innerHTML = "";
 
@@ -257,16 +285,17 @@ if (!isAdmin) {
 
 
 
-    const newMember = {
-      id: Date.now().toString(),
-      name,
-      birthdate,
-      phone,
-      email,
-      ktp,
-      tier,
-      transactions: []
-    };
+const newMember = {
+  id: Date.now().toString(),
+  name,
+  birthdate,
+  phone,
+  email,
+  ktp,
+  tier,
+  transactions: [],
+  lastRoomUpgrade: null // 👈 Add this line
+};
 
     try {
       await saveMember(newMember);
@@ -307,6 +336,9 @@ if (document.getElementById("memberDetails")) {
 }
 
 async function renderDetails(member) {
+
+if (!Array.isArray(member.roomUpgradeHistory)) member.roomUpgradeHistory = [];
+
 if (typeof member.yearlySinceUpgrade !== "number") member.yearlySinceUpgrade = 0;
 member.redeemablePoints = member.redeemablePoints || 0;
 
@@ -333,6 +365,15 @@ member.redeemablePoints = member.redeemablePoints || 0;
   document.getElementById("memberDetails").innerHTML = `
 <p>Available Cashback Points: <strong>Rp${member.redeemablePoints}</strong></p>
 
+${member.tier === "Gold" && member.roomUpgradeHistory?.length > 0 ? `
+  <h3>Room Upgrade History</h3>
+  <ul style="font-size:0.9em; color:#444; padding-left:20px;">
+    ${member.roomUpgradeHistory.slice().reverse().map(date => `
+      <li>🏨 ${new Date(date).toLocaleDateString()}</li>
+    `).join("")}
+  </ul>
+` : ""}
+
     <h2>${member.name}</h2>
     <p>Tier: ${member.tier}</p>
     <ul>
@@ -348,6 +389,18 @@ member.redeemablePoints = member.redeemablePoints || 0;
       <li>All Time: Rp${full.toLocaleString()}</li>
     </ul>
     <p>Total Transactions: ${member.transactions.length}</p>
+
+${member.tier === "Gold" ? (() => {
+  const now = new Date();
+  const last = member.lastRoomUpgrade ? new Date(member.lastRoomUpgrade) : null;
+  const diff = last ? (now - last) / (1000 * 60 * 60 * 24) : 999;
+  if (diff >= 180) {
+    return `<button id="claimRoomUpgrade">🏨 Claim Free Room Upgrade</button>`;
+  } else {
+    const nextDate = new Date(last.setMonth(last.getMonth() + 6));
+    return `<p style="color:gray;">⏳ Next upgrade on ${nextDate.toLocaleDateString()}</p>`;
+  }
+})() : ""}
 
     <h3>Add Transaction</h3>
 <input type="number" id="txAmount" placeholder="Amount Spent" ${isAdmin ? "" : "readonly"} />
@@ -420,6 +473,20 @@ if (extracted !== null) {
     }
   });
 
+document.getElementById("claimRoomUpgrade")?.addEventListener("click", async () => {
+  if (!confirm("Confirm Gold tier room upgrade for this member?")) return;
+
+  const nowStr = new Date().toISOString();
+
+  member.lastRoomUpgrade = nowStr;
+  member.roomUpgradeHistory = member.roomUpgradeHistory || [];
+  member.roomUpgradeHistory.push(nowStr); // ✅ record the claim
+
+  await saveMember(member);
+  alert("✅ Room upgrade redeemed! Next one in 6 months.");
+  location.reload();
+});
+
   // 💳 Transaction History Table with Cashback
   if (member.transactions?.length > 0) {
     const historySection = document.createElement("div");
@@ -434,14 +501,22 @@ if (extracted !== null) {
           </tr>
         </thead>
         <tbody>
-          ${member.transactions.slice().reverse().map(tx => `
-            <tr>
-              <td>${new Date(tx.date).toLocaleDateString()}</td>
-              <td>Rp${tx.amount.toLocaleString()}</td>
-              <td style="color:${tx.cashback ? 'green' : '#999'};">
-                ${tx.cashback ? `+Rp${tx.cashback.toLocaleString()}` : '–'}
-              </td>
-            </tr>`).join("")}
+${member.transactions.slice().reverse().map(tx => {
+  const txDate = new Date(tx.date);
+  const txDateStr = txDate.toLocaleDateString();
+const capped = tx.note?.includes("capped")
+  ? `<br><small style="color:crimson;">🎯 ${tx.note}</small>`
+  : "";
+
+  return `
+    <tr>
+      <td>${txDateStr}</td>
+      <td>Rp${tx.amount.toLocaleString()}</td>
+      <td style="color:${tx.cashback ? 'green' : '#999'};">
+        ${tx.cashback ? `+Rp${tx.cashback.toLocaleString()}` : '–'}${capped}
+      </td>
+    </tr>`;
+}).join("")}
         </tbody>
       </table>
     `;
@@ -457,6 +532,14 @@ document.getElementById("redeemBtn").addEventListener("click", async () => {
   await saveMember(member);
   alert(`🎉 Redeemed Rp${redeem}!`);
   location.reload();
+
+list.innerHTML = "";
+
+if (filtered.length === 0) {
+  list.innerHTML = "<p style='color:gray;'>🙈 No members found.</p>";
+  return;
+}
+
 });
 
 
@@ -515,24 +598,40 @@ document.getElementById("redeemBtn").addEventListener("click", async () => {
       .filter(tx => tx.date?.startsWith(todayStr) && tx.cashback)
       .reduce((sum, tx) => sum + tx.cashback, 0);
 
-    let cashback = Math.floor((amount * rate) / 100);
-    if (todayCashback + cashback > cap) {
-      cashback = Math.max(0, cap - todayCashback);
-    }
+// ✅ Use capped cashback value above
+let cashback = Math.floor((amount * rate) / 100);
+if (todayCashback + cashback > cap) {
+  cashback = Math.max(0, cap - todayCashback);
+}
 
-    const tx = {
-      date: now.toISOString(),
-      amount,
-      cashback,
-      fileData: null
-    };
+// 💾 Then use it here:
+const tx = {
+  date: now.toISOString(),
+  amount,
+  cashback, // ✅ capped value
+  fileData: null
+};
 
-    const finishTransaction = async () => {
-      member.transactions.push(tx);
-      const upgraded = await updateTier(member);
-      if (!upgraded) await saveMember(member);
-      location.reload();
-    };
+const finishTransaction = async () => {
+const tx = {
+  date: now.toISOString(),
+  amount,
+  cashback,
+  note: "", // 👈 add this
+
+  fileData: null
+};
+
+if (todayCashback + cashback === cap && cap !== 0) {
+  tx.note = `Cashback capped at Rp${cap.toLocaleString()} today`;
+}
+
+  member.transactions.push(tx);
+  member.redeemablePoints = (member.redeemablePoints || 0) + cashback; // ✅ track only capped cashback
+  const upgraded = await updateTier(member);
+  await saveMember(member);
+  location.reload();
+};
 
     if (file) {
       const reader = new FileReader();
@@ -550,7 +649,7 @@ document.getElementById("redeemBtn").addEventListener("click", async () => {
 // 🔁 Export transactions as CSV
 async function exportAllTransactions() {
   const snapshot = await db.collection("members").get();
-  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+renderMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
   let csv = "Member ID,Member Name,Date,Amount,File Attached\n";
   members.forEach(member => {
@@ -572,7 +671,7 @@ async function exportAllTransactions() {
 // 📷 Export with embedded base64 image
 async function exportTransactionsWithImages() {
   const snapshot = await db.collection("members").get();
-  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+renderMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
   const rows = [["Member ID", "Member Name", "Date", "Amount", "Image"]];
   members.forEach(member => {
@@ -601,7 +700,7 @@ async function exportTransactionsWithImages() {
 // 💾 Export full member data as JSON
 async function exportJSON() {
   const snapshot = await db.collection("members").get();
-  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+renderMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
   const blob = new Blob([JSON.stringify(members, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
