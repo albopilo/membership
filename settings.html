@@ -27,13 +27,15 @@
   <label>Silver → Gold (Yearly): <input type="number" id="silverToGoldYear" /></label>
   <label>Gold Maintain (Yearly): <input type="number" id="maintainGoldYear" /></label>
 
-{
-  silverCashbackRate: 5,              // %
-  goldCashbackRate: 5,                // %
-  birthdayGoldCashbackRate: 30,       // %
-  silverDailyCashbackCap: 15000,      // Rp
-  goldDailyCashbackCap: 30000         // Rp
-}
+<div id="cashbackSettings">
+  <h3>Cashback Settings</h3>
+  <label>Silver Cashback Rate (%): <input type="number" id="silverRate" /></label><br>
+  <label>Gold Cashback Rate (%): <input type="number" id="goldRate" /></label><br>
+  <label>Birthday Gold Cashback (%): <input type="number" id="birthdayGold" /></label><br>
+  <label>Silver Daily Cap (Rp): <input type="number" id="silverCap" /></label><br>
+  <label>Gold Daily Cap (Rp): <input type="number" id="goldCap" /></label><br>
+  <button id="saveCashback">💾 Save</button>
+</div>
 
   <button id="saveSettingsBtn">💾 Save Settings</button>
 

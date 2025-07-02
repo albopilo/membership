@@ -103,6 +103,24 @@ const isAdmin = localStorage.getItem("isAdmin") === "true";
 const settingsRef = db.collection("settings").doc("tierThresholds");
 let tierSettings = {};
 
+// -------- 🧠 CASHBACK SETTINGS --------
+async function loadCashbackSettings() {
+  try {
+    const doc = await db.collection("settings").doc("cashbackRates").get();
+    if (doc.exists) {
+      const d = doc.data();
+      document.getElementById("silverRate").value = d.silverCashbackRate;
+      document.getElementById("goldRate").value = d.goldCashbackRate;
+      document.getElementById("birthdayGold").value = d.birthdayGoldCashbackRate;
+      document.getElementById("silverCap").value = d.silverDailyCashbackCap;
+      document.getElementById("goldCap").value = d.goldDailyCashbackCap;
+      console.log("✅ Loaded cashback settings:", d);
+    }
+  } catch (err) {
+    console.error("⚠️ Failed to load cashback settings:", err);
+  }
+}
+
 async function loadTierSettingsFromCloud() {
   try {
     const doc = await settingsRef.get();
@@ -214,17 +232,30 @@ if (document.getElementById("memberList")) {
 // -------- ➕ ADD PAGE --------
 if (document.getElementById("addMemberBtn")) {
   document.getElementById("addMemberBtn").addEventListener("click", async () => {
+if (!isAdmin) {
+  const tierSelect = document.getElementById("newTier");
+  tierSelect.value = "bronze";
+  tierSelect.disabled = true;
+
+  // Optional: add a note
+  const note = document.createElement("small");
+  note.textContent = "Public users are assigned Bronze tier automatically.";
+  note.style.color = "gray";
+  tierSelect.parentElement.appendChild(note);
+}
     const name = document.getElementById("newName").value.trim();
     const birthdate = document.getElementById("newBirthdate").value;
     const phone = document.getElementById("newPhone").value;
     const email = document.getElementById("newEmail").value;
     const ktp = document.getElementById("newKTP").value;
-    const tier = document.getElementById("newTier").value;
+    const tier = isAdmin ? document.getElementById("newTier").value : "bronze";
 
     if (!name) {
       alert("Name is required.");
       return;
     }
+
+
 
     const newMember = {
       id: Date.now().toString(),
@@ -246,6 +277,19 @@ if (document.getElementById("addMemberBtn")) {
       alert("⚠️ Failed to add member. Please try again.");
     }
   });
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!isAdmin && document.getElementById("newTier")) {
+    const tierSelect = document.getElementById("newTier");
+    tierSelect.value = "bronze";
+    tierSelect.disabled = true;
+
+    const note = document.createElement("small");
+    note.textContent = "Public users are assigned Bronze tier automatically.";
+    note.style.color = "gray";
+    tierSelect.parentElement.appendChild(note);
+  }
+});
 }
 
 // -------- 🔍 DETAILS PAGE --------
@@ -306,7 +350,8 @@ member.redeemablePoints = member.redeemablePoints || 0;
     <p>Total Transactions: ${member.transactions.length}</p>
 
     <h3>Add Transaction</h3>
-    <input type="number" id="txAmount" placeholder="Amount Spent" />
+<input type="number" id="txAmount" placeholder="Amount Spent" ${isAdmin ? "" : "readonly"} />
+${!isAdmin ? `<small style="color:gray;">Amount is auto-filled from scanned receipt</small>` : ""}
     <input type="file" id="txFile" accept="image/*,.pdf" />
 
 <p id="ocrStatus" style="color:#777; font-style:italic;"></p>
@@ -713,6 +758,10 @@ async function deleteMember(memberId) {
 function saveTierSettings() {
   localStorage.setItem("tierSettings", JSON.stringify(tierSettings));
   alert("✅ Settings saved!");
+}
+
+if (document.getElementById("silverRate")) {
+  loadCashbackSettings();
 }
 
 if (document.getElementById("saveSettingsBtn")) {
