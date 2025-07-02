@@ -136,50 +136,23 @@ loadTierSettingsFromCloud();
 
 let lastVisible = null;
 
-async function loadNextPage() {
-  let query = db.collection("members").orderBy("id").limit(20);
-  if (lastVisible) query = query.startAfter(lastVisible);
+const searchInput = document.getElementById("searchInput");
+if (searchInput) {
+  searchInput.addEventListener("input", async (e) => {
+    const keyword = e.target.value.trim().toLowerCase();
 
-  const snapshot = await query.get();
+    if (!keyword) {
+      document.getElementById("loadMoreBtn").style.display = "block";
+      lastVisible = null;
+      document.getElementById("memberList").innerHTML = "";
+      await loadNextPage();
+      return;
+    }
 
-if (snapshot.empty) {
-  console.log("🚫 No more members to load.");
-  document.getElementById("loadMoreBtn").disabled = true;
-  document.getElementById("loadMoreBtn").textContent = "✅ All loaded";
-  return;
-}
- 
-
-  lastVisible = snapshot.docs[snapshot.docs.length - 1];
-
-  const newMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  renderMembers(newMembers);
-}
-
-if (document.getElementById("memberList")) {
-  try {
-    loadNextPage(); // 👈 This loads your first batch of 20
-  } catch (err) {
-    console.error("❌ Failed to load members:", err);
-  }
-
-
-
-document.getElementById("searchInput").addEventListener("input", async (e) => {
-  const keyword = e.target.value.trim().toLowerCase();
-
-  if (!keyword) {
-    document.getElementById("loadMoreBtn").style.display = "block";
-    lastVisible = null; // ✅ reset the cursor
-    document.getElementById("memberList").innerHTML = ""; // optional: clear current results
-    await loadNextPage(); // restart from top
-    return;
-  }
-
-  const results = await searchMembersByName(keyword);
-  renderMembers(results);
-  document.getElementById("loadMoreBtn").style.display = "none";
-});
+    const results = await searchMembersByName(keyword);
+    renderMembers(results);
+    document.getElementById("loadMoreBtn").style.display = "none";
+  });
 }
 
 
@@ -272,30 +245,35 @@ async function searchMembersByName(keyword) {
   }
 
 // 🆔 KTP-to-Birthdate Autofill
-document.getElementById("newKTP").addEventListener("blur", () => {
-  const ktp = document.getElementById("newKTP").value.trim();
-  if (!ktp || ktp.length < 12) return;
+const newKTPInput = document.getElementById("newKTP");
+if (newKTPInput) {
+  newKTPInput.addEventListener("blur", () => {
+    const ktp = newKTPInput.value.trim();
+    if (!ktp || ktp.length < 12) return;
 
-  const dobPart = ktp.slice(6, 12); // Digits 7–12
-  let day = parseInt(dobPart.slice(0, 2), 10);
-  const month = parseInt(dobPart.slice(2, 4), 10);
-  const year = parseInt(dobPart.slice(4, 6), 10);
+    const dobPart = ktp.slice(6, 12);
+    let day = parseInt(dobPart.slice(0, 2), 10);
+    const month = parseInt(dobPart.slice(2, 4), 10);
+    const year = parseInt(dobPart.slice(4, 6), 10);
 
-  const gender = day > 40 ? "Female" : "Male";
-  if (day > 40) day -= 40;
+    const gender = day > 40 ? "Female" : "Male";
+    if (day > 40) day -= 40;
 
-  const now = new Date();
-  const century = year <= now.getFullYear() % 100 ? 2000 : 1900;
-  const fullDate = new Date(century + year, month - 1, day);
+    const now = new Date();
+    const century = year <= now.getFullYear() % 100 ? 2000 : 1900;
+    const fullDate = new Date(century + year, month - 1, day);
 
-  const yyyy = fullDate.getFullYear();
-const mm = String(fullDate.getMonth() + 1).padStart(2, '0');
-const dd = String(fullDate.getDate()).padStart(2, '0');
+    const yyyy = fullDate.getFullYear();
+    const mm = String(fullDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(fullDate.getDate()).padStart(2, '0');
 
-const iso = `${yyyy}-${mm}-${dd}`;
-document.getElementById("newBirthdate").value = iso;
-  console.log(`🎂 Detected birthdate: ${iso} (${gender})`);
-});
+    const iso = `${yyyy}-${mm}-${dd}`;
+    const birthInput = document.getElementById("newBirthdate");
+    if (birthInput) birthInput.value = iso;
+
+    console.log(`🎂 Detected birthdate: ${iso} (${gender})`);
+  });
+}
 
 // -------- ➕ ADD PAGE --------
 if (document.getElementById("addMemberBtn")) {
@@ -834,6 +812,129 @@ function saveTierSettings() {
   localStorage.setItem("tierSettings", JSON.stringify(tierSettings));
   alert("✅ Settings saved!");
 }
+
+async function loadNextPage() {
+  let query = db.collection("members").orderBy("id").limit(20);
+  if (lastVisible) query = query.startAfter(lastVisible);
+
+  const snapshot = await query.get();
+
+  if (snapshot.empty) {
+    console.log("🚫 No more members to load.");
+    document.getElementById("loadMoreBtn").disabled = true;
+    document.getElementById("loadMoreBtn").textContent = "✅ All loaded";
+    return;
+  }
+
+  lastVisible = snapshot.docs[snapshot.docs.length - 1];
+  const newMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderMembers(newMembers);
+  checkUpcomingBirthdays(newMembers); // 🥳 optional banner
+}
+
+async function renderTierChart() {
+  const snapshot = await db.collection("members").get();
+  const data = { Bronze: 0, Silver: 0, Gold: 0 };
+
+  snapshot.forEach(doc => {
+    const tier = (doc.data().tier || "Bronze").trim();
+    if (data[tier]) data[tier]++;
+  });
+
+  new Chart(document.getElementById("tierChart"), {
+    type: "pie",
+    data: {
+      labels: Object.keys(data),
+      datasets: [{
+        label: "Members per Tier",
+        data: Object.values(data),
+        backgroundColor: ["#cd7f32", "#c0c0c0", "#ffd700"]
+      }]
+    }
+  });
+}
+
+async function showTopMembers() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  members.sort((a, b) =>
+    (b.transactions || []).reduce((t, x) => t + x.amount, 0) -
+    (a.transactions || []).reduce((t, x) => t + x.amount, 0)
+  );
+
+  const top = members.slice(0, 3);
+  const div = document.getElementById("topMembers");
+  div.innerHTML = `
+    <h3>🏅 Top Customers</h3>
+    <ul>
+      ${top.map(m => `<li><strong>${m.name}</strong> (${m.tier}) — Rp${(m.transactions || []).reduce((t, x) => t + x.amount, 0).toLocaleString()}</li>`).join("")}
+    </ul>
+  `;
+}
+
+async function showActivityFeed() {
+  const snapshot = await db.collection("members").get();
+  const recent = [];
+
+  snapshot.forEach(doc => {
+    const m = doc.data();
+    (m.transactions || []).forEach(tx => recent.push({
+      name: m.name,
+      date: new Date(tx.date),
+      amount: tx.amount
+    }));
+  });
+
+  recent.sort((a, b) => b.date - a.date);
+  const feed = recent.slice(0, 5);
+
+  const div = document.getElementById("activityFeed");
+  div.innerHTML = `
+    <h3>🔔 Recent Activity</h3>
+    <ul>
+      ${feed.map(f => `<li>${f.date.toLocaleString()} — ${f.name} spent Rp${f.amount.toLocaleString()}</li>`).join("")}
+    </ul>
+  `;
+}
+
+
+
+
+document.addEventListener("DOMContentLoaded", () => {
+if (document.getElementById("tierChart")) {
+  renderTierChart();
+  showTopMembers();
+  showActivityFeed();
+}
+
+  const memberList = document.getElementById("memberList");
+  if (memberList) {
+    try {
+      loadNextPage();
+    } catch (err) {
+      console.error("❌ Failed to load members:", err);
+    }
+
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) {
+      searchInput.addEventListener("input", async (e) => {
+        const keyword = e.target.value.trim().toLowerCase();
+        if (!keyword) {
+          document.getElementById("loadMoreBtn").style.display = "block";
+          lastVisible = null;
+          document.getElementById("memberList").innerHTML = "";
+          await loadNextPage();
+          return;
+        }
+
+        const results = await searchMembersByName(keyword);
+        renderMembers(results);
+        document.getElementById("loadMoreBtn").style.display = "none";
+      });
+    }
+  }
+});
 
 if (document.getElementById("silverRate")) {
   loadCashbackSettings();
