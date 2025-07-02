@@ -197,21 +197,26 @@ async function searchMembersByName(keyword) {
     );
 
     filtered.forEach(member => {
-      const card = document.createElement("div");
-      card.className = "member-card";
-      card.innerHTML = `
-        <span class="tier-${member.tier.toLowerCase()}">●</span>
-        <strong>${member.name}</strong> (${member.tier})<br>
-        <ul style="margin:4px 0 8px; padding-left:16px; font-size:0.85em; color:#555;">
-          ${(tierBenefits[member.tier] || []).map(b => `<li>${b}</li>`).join("")}
-        </ul>
-      `;
-      card.onclick = () => {
-        window.location.href = `details.html?id=${member.id}`;
-      };
-      list.appendChild(card);
-    });
-  }
+  const card = document.createElement("div");
+  card.className = "member-card";
+
+  const tierKey = (member.tier || "Bronze").charAt(0).toUpperCase() + member.tier.slice(1).toLowerCase();
+
+  card.innerHTML = `
+    <span class="tier-${member.tier.toLowerCase()}">●</span>
+    <strong>${member.name}</strong> (${tierKey})<br>
+    <ul style="margin:4px 0 8px; padding-left:16px; font-size:0.85em; color:#555;">
+      ${(tierBenefits[tierKey] || []).map(b => `<li>${b}</li>`).join("")}
+    </ul>
+  `;
+
+  card.onclick = () => {
+    window.location.href = `details.html?id=${member.id}`;
+  };
+
+  list.appendChild(card);
+});
+}
 
   function checkUpcomingBirthdays(members) {
     const today = new Date();
@@ -728,6 +733,7 @@ renderMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 }
 
 async function updateTier(member) {
+
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
@@ -780,14 +786,22 @@ async function updateTier(member) {
     newTier = "Gold";
   }
 
+console.log("🔎 Checking for upgrade:", member.name, {
+  monthlySinceUpgrade,
+  yearlySinceUpgrade,
+  currentTier,
+  thresholds
+});
+
   if (newTier !== currentTier) {
-    member.tier = newTier;
-    member.upgradeDate = now.toISOString();
-    member.yearlySinceUpgrade = 0;
-    member.monthlySinceUpgrade = 0;
-    await saveMember(member);
-    console.log(`🎉 ${member.name} upgraded to ${newTier}`);
-    return true;
+  member.tier = newTier;
+  member.upgradeDate = now.toISOString();
+  member.yearlySinceUpgrade = 0;
+  member.monthlySinceUpgrade = 0;
+  await saveMember(member);
+  alert(`🎉 ${member.name} has just been upgraded to ${newTier} tier!`);
+  console.log(`🎉 ${member.name} upgraded to ${newTier}`);
+  return true;
   } else {
     await db.collection("members").doc(member.id).update({
       yearlySinceUpgrade,
@@ -795,6 +809,8 @@ async function updateTier(member) {
     });
     return false;
   }
+
+
 }
 
 async function deleteMember(memberId) {
