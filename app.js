@@ -141,16 +141,14 @@ async function loadNextPage() {
   if (lastVisible) query = query.startAfter(lastVisible);
 
   const snapshot = await query.get();
-  if (snapshot.empty) {
-    console.log("🚫 No more members to load.");
-    return; // Don’t re-render or update lastVisible
 
 if (snapshot.empty) {
+  console.log("🚫 No more members to load.");
   document.getElementById("loadMoreBtn").disabled = true;
   document.getElementById("loadMoreBtn").textContent = "✅ All loaded";
-  return; // ✅ this avoids rendering empty
+  return;
 }
-  }
+ 
 
   lastVisible = snapshot.docs[snapshot.docs.length - 1];
 
@@ -165,17 +163,23 @@ if (document.getElementById("memberList")) {
     console.error("❌ Failed to load members:", err);
   }
 
-  document.getElementById("searchInput").addEventListener("input", async (e) => {
-    const members = await fetchMembers(); // optional: update for pagination
-    renderMembers(members, e.target.value);
-  });
 
-  const loadMoreBtn = document.getElementById("loadMoreBtn");
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener("click", () => {
-      loadNextPage(); // 👈 Load more when clicked
-    });
+
+document.getElementById("searchInput").addEventListener("input", async (e) => {
+  const keyword = e.target.value.trim().toLowerCase();
+
+  if (!keyword) {
+    document.getElementById("loadMoreBtn").style.display = "block";
+    lastVisible = null; // ✅ reset the cursor
+    document.getElementById("memberList").innerHTML = ""; // optional: clear current results
+    await loadNextPage(); // restart from top
+    return;
   }
+
+  const results = await searchMembersByName(keyword);
+  renderMembers(results);
+  document.getElementById("loadMoreBtn").style.display = "none";
+});
 }
 
 
@@ -199,6 +203,16 @@ if (document.getElementById("memberList")) {
       "🎁 VIP Birthday: deluxe room, food/drink/snack, 30% cashback, VIP lounge access"
     ]
   };
+
+async function searchMembersByName(keyword) {
+  const snapshot = await db.collection("members")
+    .orderBy("nameLower")
+    .startAt(keyword)
+    .endAt(keyword + '\uf8ff')
+    .get();
+
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
 
   function renderMembers(members, filter = "") {
 
@@ -257,6 +271,32 @@ if (document.getElementById("memberList")) {
     }
   }
 
+// 🆔 KTP-to-Birthdate Autofill
+document.getElementById("newKTP").addEventListener("blur", () => {
+  const ktp = document.getElementById("newKTP").value.trim();
+  if (!ktp || ktp.length < 12) return;
+
+  const dobPart = ktp.slice(6, 12); // Digits 7–12
+  let day = parseInt(dobPart.slice(0, 2), 10);
+  const month = parseInt(dobPart.slice(2, 4), 10);
+  const year = parseInt(dobPart.slice(4, 6), 10);
+
+  const gender = day > 40 ? "Female" : "Male";
+  if (day > 40) day -= 40;
+
+  const now = new Date();
+  const century = year <= now.getFullYear() % 100 ? 2000 : 1900;
+  const fullDate = new Date(century + year, month - 1, day);
+
+  const yyyy = fullDate.getFullYear();
+const mm = String(fullDate.getMonth() + 1).padStart(2, '0');
+const dd = String(fullDate.getDate()).padStart(2, '0');
+
+const iso = `${yyyy}-${mm}-${dd}`;
+document.getElementById("newBirthdate").value = iso;
+  console.log(`🎂 Detected birthdate: ${iso} (${gender})`);
+});
+
 // -------- ➕ ADD PAGE --------
 if (document.getElementById("addMemberBtn")) {
   document.getElementById("addMemberBtn").addEventListener("click", async () => {
@@ -275,7 +315,7 @@ if (!isAdmin) {
     const birthdate = document.getElementById("newBirthdate").value;
     const phone = document.getElementById("newPhone").value;
     const email = document.getElementById("newEmail").value;
-    const ktp = document.getElementById("newKTP").value;
+const ktp = document.getElementById("newKTP").value;
     const tier = isAdmin ? document.getElementById("newTier").value : "bronze";
 
     if (!name) {
@@ -288,6 +328,7 @@ if (!isAdmin) {
 const newMember = {
   id: Date.now().toString(),
   name,
+  nameLower: name.toLowerCase(), // ✅ Add this!
   birthdate,
   phone,
   email,
@@ -364,6 +405,10 @@ member.redeemablePoints = member.redeemablePoints || 0;
 
   document.getElementById("memberDetails").innerHTML = `
 <p>Available Cashback Points: <strong>Rp${member.redeemablePoints}</strong></p>
+
+<input type="number" id="redeemAmount" placeholder="Redeem Rp..." />
+<button id="redeemBtn">Redeem</button>
+
 
 ${member.tier === "Gold" && member.roomUpgradeHistory?.length > 0 ? `
   <h3>Room Upgrade History</h3>
@@ -523,24 +568,19 @@ const capped = tx.note?.includes("capped")
     document.getElementById("memberDetails").appendChild(historySection);
   }
 
-document.getElementById("redeemBtn").addEventListener("click", async () => {
-  const redeem = parseInt(document.getElementById("redeemAmount").value);
-  if (isNaN(redeem) || redeem <= 0) return alert("Enter a valid amount.");
-  if (redeem > member.redeemablePoints) return alert("Insufficient points.");
+const redeemBtn = document.getElementById("redeemBtn");
+if (redeemBtn) {
+  redeemBtn.addEventListener("click", async () => {
+    const redeem = parseInt(document.getElementById("redeemAmount").value);
+    if (isNaN(redeem) || redeem <= 0) return alert("Enter a valid amount.");
+    if (redeem > member.redeemablePoints) return alert("Insufficient points.");
 
-  member.redeemablePoints -= redeem;
-  await saveMember(member);
-  alert(`🎉 Redeemed Rp${redeem}!`);
-  location.reload();
-
-list.innerHTML = "";
-
-if (filtered.length === 0) {
-  list.innerHTML = "<p style='color:gray;'>🙈 No members found.</p>";
-  return;
+    member.redeemablePoints -= redeem;
+    await saveMember(member);
+    alert(`🎉 Redeemed Rp${redeem}!`);
+    location.reload();
+  });
 }
-
-});
 
 
 
@@ -788,6 +828,7 @@ async function deleteMember(memberId) {
     alert("Failed to delete member. Please try again.");
   }
 }
+
 
 function saveTierSettings() {
   localStorage.setItem("tierSettings", JSON.stringify(tierSettings));
