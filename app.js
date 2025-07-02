@@ -23,40 +23,108 @@ function saveMember(member) {
 
 function extractTotalAmount(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim()).filter(Boolean);
-  const contextMatches = [];
-  const fallbackMatches = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].toLowerCase();
+    const label = lines[i].toLowerCase().replace(/[^a-z ]/g, "").trim();
 
-    // 🔍 Look for keywords like "grand total", "jumlah bayar", etc.
-    if (line.includes("grand total") || line.includes("jumlah bayar") || line.includes("total bayar")) {
-      for (let j = -1; j <= 3; j++) {
-        const check = lines[i + j] || "";
-        const matches = check.match(/(\d{1,3}(?:[.,]\d{3})+)/g);
+    if (/s?g?rand[ \-]?total/.test(label)) {
+      const scanLines = [lines[i], lines[i + 1]];
+      for (const line of scanLines) {
+        if (!line) continue;
+        const matches = line.match(/[\d.,]+/g);
         if (matches) {
-          matches.forEach(str => {
-            const num = parseInt(str.replace(/[^\d]/g, ""));
-            if (!isNaN(num) && num >= 1000) contextMatches.push(num);
-          });
+          for (const str of matches) {
+            const num = parseInt(str.replace(/[^\d]/g, ""), 10);
+            if (!isNaN(num) && num >= 1000 && num <= 10000000) {
+              return num;
+            }
+          }
         }
       }
     }
+  }
 
-    // 🛡 Fallback: gather all big numbers from all lines
-    const globalMatches = line.match(/(\d{1,3}(?:[.,]\d{3})+)/g);
-    if (globalMatches) {
-      globalMatches.forEach(str => {
-        const num = parseInt(str.replace(/[^\d]/g, ""));
-        if (!isNaN(num) && num >= 1000) fallbackMatches.push(num);
+  // fallback
+  const fallbackMatches = [];
+  for (const line of lines) {
+    const matches = line.match(/[\d.,]+/g);
+    if (matches) {
+      matches.forEach(str => {
+        const num = parseInt(str.replace(/[^\d]/g, ""), 10);
+        if (!isNaN(num) && num >= 1000 && num <= 10000000) {
+          fallbackMatches.push(num);
+        }
       });
     }
   }
 
-  // 🎯 Prioritize context first, then fallback
-  if (contextMatches.length > 0) return Math.max(...contextMatches);
-  if (fallbackMatches.length > 0) return Math.max(...fallbackMatches);
-  return null;
+  return fallbackMatches.length > 0 ? Math.max(...fallbackMatches) : null;
+}
+
+function resizeImage(base64, maxWidth = 750) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext("2d");
+
+      // 🧠 Add this line before drawing
+      ctx.filter = "grayscale(100%) contrast(130%) brightness(105%)";
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.8));
+    };
+    img.src = base64;
+  });
+}
+
+async function handleReceiptOCR(file, statusEl, amountEl) {
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    const base64 = await resizeImage(reader.result);
+    statusEl.textContent = "🔍 Scanning receipt… please wait";
+
+    try {
+      const start = performance.now();
+
+      const worker = Tesseract.createWorker({
+        logger: m => console.log(m) // optional
+      });
+
+      await worker.load();
+      await worker.loadLanguage('eng');
+      await worker.initialize('eng');
+
+      const { data } = await worker.recognize(base64);
+      await worker.terminate();
+
+      const end = performance.now();
+      const scanTime = ((end - start) / 1000).toFixed(1);
+      console.log(`⏱️ OCR took ${scanTime}s`);
+
+      const text = data.text;
+      console.log("🧾 OCR TEXT:\n", text);
+
+      const extracted = extractTotalAmount(text);
+      if (extracted !== null) {
+        amountEl.value = extracted;
+        statusEl.textContent = `✅ Auto-filled: Rp${extracted.toLocaleString()} (in ${scanTime}s)`;
+statusEl.textContent += " — now press 'Add' to confirm transaction.";
+      } else {
+        statusEl.textContent = `⚠️ Couldn't detect a valid total (scanned in ${scanTime}s)`;
+      }
+
+    } catch (err) {
+      console.error("OCR error:", err);
+      statusEl.textContent = "❌ Failed to scan receipt.";
+    }
+  };
+
+  reader.readAsDataURL(file);
 }
 
 
@@ -444,46 +512,18 @@ ${!isAdmin ? `<small style="color:gray;">Amount is auto-filled from scanned rece
   `;
 
 // 🔽 Add this OCR handler immediately after setting the HTML:
-setTimeout(() => {
-  const txFile = document.getElementById("txFile");
-  const ocrStatus = document.getElementById("ocrStatus");
-  if (!txFile || !ocrStatus) return;
+const txFile = document.getElementById("txFile");
+const txAmountEl = document.getElementById("txAmount");
+const ocrStatus = document.getElementById("ocrStatus");
 
-  txFile.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+txFile.addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    ocrStatus.textContent = "🔍 Scanning receipt… please wait";
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      Tesseract.recognize(reader.result, 'eng').then(result => {
-console.log("🧾 OCR TEXT:\n", result.data.text);
-
-const extracted = extractTotalAmount(result.data.text);
-
-if (extracted !== null) {
-  document.getElementById("txAmount").value = extracted;
-  alert(`✅ Auto-filled: Rp${extracted.toLocaleString()}`);
-} else {
-  alert("⚠️ Still couldn't detect a valid total. Try re-scanning or enter manually.");
-}
-        const match = result.data.text.match(/(?:grand|jumlah)?\s*total(?: bayar)?\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
-        if (match) {
-          const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
-          document.getElementById("txAmount").value = extracted;
-          ocrStatus.textContent = `✅ Auto-filled: Rp${extracted.toLocaleString()}`;
-        } else {
-          ocrStatus.textContent = "⚠️ Couldn't detect a total amount in the receipt.";
-        }
-      }).catch(err => {
-        console.error("OCR error:", err);
-        ocrStatus.textContent = "❌ Failed to scan receipt.";
-      });
-    };
-    reader.readAsDataURL(file);
+  handleReceiptOCR(file, ocrStatus, txAmountEl).then(() => {
+    e.target.value = ""; // ✅ Reset so same file can be reselected
   });
-}, 200);
+});
 
 
 
@@ -581,25 +621,11 @@ if (redeemBtn) {
     const isBirthday = isSameDay(now, member.birthdate);
 
   // 📷 Auto-OCR if amount field is empty
-  if (file && !amount) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      Tesseract.recognize(reader.result, 'eng').then(result => {
-        const text = result.data.text;
 
-        const match = text.match(/(?:total|jumlah|bayar)\s*[:\-]?\s*Rp?\s?([\d.,]+)/i);
-        if (match) {
-          const extracted = parseInt(match[1].replace(/[^\d]/g, ""));
-          document.getElementById("txAmount").value = extracted;
-          alert(`🧾 OCR detected amount: Rp${extracted.toLocaleString()}`);
-        } else {
-          alert("⚠️ Couldn't detect amount in receipt text.");
-        }
-      });
-    };
-    reader.readAsDataURL(file);
-    return; // Stop form submission so user can confirm amount
-  }
+if (file && !amount) {
+  await handleReceiptOCR(file, document.getElementById("ocrStatus"), document.getElementById("txAmount"));
+  return; // Wait for user to confirm or edit before submitting
+}
 
     const rate =
       tier === "Gold" && isBirthday
@@ -636,23 +662,25 @@ const tx = {
 };
 
 const finishTransaction = async () => {
-const tx = {
-  date: now.toISOString(),
-  amount,
-  cashback,
-  note: "", // 👈 add this
+  const txFinal = {
+    date: now.toISOString(),
+    amount,
+    cashback,
+    note: (todayCashback + cashback === cap && cap !== 0)
+      ? `Cashback capped at Rp${cap.toLocaleString()} today`
+      : "",
+    fileData: tx.fileData || null
+  };
 
-  fileData: null
-};
+  member.transactions.push(txFinal);
+  member.redeemablePoints = (member.redeemablePoints || 0) + cashback;
 
-if (todayCashback + cashback === cap && cap !== 0) {
-  tx.note = `Cashback capped at Rp${cap.toLocaleString()} today`;
-}
-
-  member.transactions.push(tx);
-  member.redeemablePoints = (member.redeemablePoints || 0) + cashback; // ✅ track only capped cashback
   const upgraded = await updateTier(member);
-  await saveMember(member);
+
+if (!upgraded) {
+  await saveMember(member); // Only save again if not already saved during upgrade
+}
+  if (upgraded) alert(`🎉 ${member.name} upgraded to ${member.tier}!`);
   location.reload();
 };
 
@@ -773,18 +801,18 @@ async function updateTier(member) {
     silverToGoldYear: tierSettings.silverToGoldYear ?? 4000000
   };
 
-  const currentTier = (member.tier || "Bronze").trim();
-  let newTier = currentTier;
+  const currentTier = (member.tier || "Bronze").trim().toLowerCase();
+let newTier = currentTier;
 
-  if (currentTier === "Bronze" && (
-    monthlySinceUpgrade >= thresholds.bronzeToSilverMonth ||
-    yearlySinceUpgrade >= thresholds.bronzeToSilverYear)) {
-    newTier = "Silver";
-  } else if (currentTier === "Silver" && (
-    monthlySinceUpgrade >= thresholds.silverToGoldMonth ||
-    yearlySinceUpgrade >= thresholds.silverToGoldYear)) {
-    newTier = "Gold";
-  }
+if (currentTier === "bronze" && (
+  monthlySinceUpgrade >= thresholds.bronzeToSilverMonth ||
+  yearlySinceUpgrade >= thresholds.bronzeToSilverYear)) {
+  newTier = "silver";
+} else if (currentTier === "silver" && (
+  monthlySinceUpgrade >= thresholds.silverToGoldMonth ||
+  yearlySinceUpgrade >= thresholds.silverToGoldYear)) {
+  newTier = "gold";
+}
 
 console.log("🔎 Checking for upgrade:", member.name, {
   monthlySinceUpgrade,
@@ -798,6 +826,7 @@ console.log("🔎 Checking for upgrade:", member.name, {
   member.upgradeDate = now.toISOString();
   member.yearlySinceUpgrade = 0;
   member.monthlySinceUpgrade = 0;
+member.tier = newTier.charAt(0).toUpperCase() + newTier.slice(1).toLowerCase();
   await saveMember(member);
   alert(`🎉 ${member.name} has just been upgraded to ${newTier} tier!`);
   console.log(`🎉 ${member.name} upgraded to ${newTier}`);
