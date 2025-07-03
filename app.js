@@ -455,6 +455,12 @@ member.redeemablePoints = member.redeemablePoints || 0;
   await updateTier(member);
 
   document.getElementById("memberDetails").innerHTML = `
+${isAdmin ? `
+  <button id="editMemberBtn">✏️ Edit Member Details</button>
+` : ""}
+
+
+
 <p>Available Cashback Points: <strong>Rp${member.redeemablePoints}</strong></p>
 
 <input type="number" id="redeemAmount" placeholder="Redeem Rp..." />
@@ -472,6 +478,7 @@ ${member.tier === "Gold" && member.roomUpgradeHistory?.length > 0 ? `
 
     <h2>${member.name}</h2>
     <p>Tier: ${member.tier}</p>
+
     <ul>
       <li>Birthdate: ${member.birthdate || "-"}</li>
       <li>Phone: ${member.phone || "-"}</li>
@@ -498,6 +505,8 @@ ${member.tier === "Gold" ? (() => {
   }
 })() : ""}
 
+
+
     <h3>Add Transaction</h3>
 <input type="number" id="txAmount" placeholder="Amount Spent" ${isAdmin ? "" : "readonly"} />
 ${!isAdmin ? `<small style="color:gray;">Amount is auto-filled from scanned receipt</small>` : ""}
@@ -511,6 +520,13 @@ ${!isAdmin ? `<small style="color:gray;">Amount is auto-filled from scanned rece
     </button>
   `;
 
+if (isAdmin) {
+  document.getElementById("editMemberBtn")?.addEventListener("click", () => {
+    window.location.href = `edit.html?id=${member.id}`;
+  });
+}
+
+
 // 🔽 Add this OCR handler immediately after setting the HTML:
 const txFile = document.getElementById("txFile");
 const txAmountEl = document.getElementById("txAmount");
@@ -523,6 +539,20 @@ txFile.addEventListener("change", (e) => {
   handleReceiptOCR(file, ocrStatus, txAmountEl).then(() => {
     e.target.value = ""; // ✅ Reset so same file can be reselected
   });
+});
+
+document.getElementById("saveEditsBtn")?.addEventListener("click", async () => {
+  member.name = document.getElementById("editName").value.trim();
+  member.nameLower = member.name.toLowerCase();
+  member.birthdate = document.getElementById("editBirth").value;
+  member.phone = document.getElementById("editPhone").value.trim();
+  member.email = document.getElementById("editEmail").value.trim();
+  member.ktp = document.getElementById("editKTP").value.trim();
+  member.tier = document.getElementById("editTier").value;
+
+  await saveMember(member);
+  alert("✅ Changes saved!");
+  location.reload();
 });
 
 
@@ -697,6 +727,56 @@ if (!upgraded) {
   });
 }
 
+
+
+if (document.getElementById("editForm")) {
+  const params = new URLSearchParams(window.location.search);
+  const memberId = params.get("id");
+
+  db.collection("members").doc(memberId).get().then(doc => {
+    if (!doc.exists) {
+      document.getElementById("editForm").innerHTML = "<p>Member not found.</p>";
+    } else {
+      renderEditForm({ id: doc.id, ...doc.data() });
+    }
+  });
+}
+
+function renderEditForm(member) {
+  document.getElementById("editForm").innerHTML = `
+    <label>Name:<br><input type="text" id="editName" value="${member.name}" /></label><br>
+    <label>Birthdate:<br><input type="date" id="editBirth" value="${member.birthdate}" /></label><br>
+    <label>Phone:<br><input type="text" id="editPhone" value="${member.phone}" /></label><br>
+    <label>Email:<br><input type="email" id="editEmail" value="${member.email}" /></label><br>
+    <label>KTP:<br><input type="text" id="editKTP" value="${member.ktp}" /></label><br>
+    <label>Tier:<br>
+      <select id="editTier">
+        <option value="Bronze">Bronze</option>
+        <option value="Silver">Silver</option>
+        <option value="Gold">Gold</option>
+      </select>
+    </label><br><br>
+    <button id="saveEditsBtn">💾 Save Changes</button>
+    <button onclick="location.href='details.html?id=${member.id}'">↩️ Back to Details</button>
+  `;
+
+  document.getElementById("editTier").value = member.tier;
+
+  document.getElementById("saveEditsBtn").addEventListener("click", async () => {
+    member.name = document.getElementById("editName").value.trim();
+    member.nameLower = member.name.toLowerCase();
+    member.birthdate = document.getElementById("editBirth").value;
+    member.phone = document.getElementById("editPhone").value;
+    member.email = document.getElementById("editEmail").value;
+    member.ktp = document.getElementById("editKTP").value;
+    member.tier = document.getElementById("editTier").value;
+
+    await saveMember(member);
+    alert("✅ Member updated!");
+    window.location.href = `details.html?id=${member.id}`;
+  });
+}
+
 // 🔁 Export transactions as CSV
 async function exportAllTransactions() {
   const snapshot = await db.collection("members").get();
@@ -859,7 +939,7 @@ function saveTierSettings() {
 }
 
 async function loadNextPage() {
-  let query = db.collection("members").orderBy("id").limit(20);
+  let query = db.collection("members").orderBy("nameLower").limit(20);
   if (lastVisible) query = query.startAfter(lastVisible);
 
   const snapshot = await query.get();
@@ -873,8 +953,9 @@ async function loadNextPage() {
 
   lastVisible = snapshot.docs[snapshot.docs.length - 1];
   const newMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+checkUpcomingBirthdays(newMembers); // 🥳 optional banner
   renderMembers(newMembers);
-  checkUpcomingBirthdays(newMembers); // 🥳 optional banner
+  
 }
 
 async function renderTierChart() {

@@ -24,16 +24,17 @@
 
   <br><br>
   <input type="text" id="searchInput" placeholder="Search members..." />
+
+<div id="birthdayBanner" style="background: #fff8e1; padding: 10px; border: 1px solid #f0c36d; margin-bottom: 1em; display: none;">
+  <span id="birthdayMessage"></span>
+  <button onclick="document.getElementById('birthdayBanner').style.display='none'" style="float: right;">✖</button>
+</div>
 <div id="memberSection">
   <div id="memberList"></div>
   <button id="loadMoreBtn">Load More</button>
 </div>
 
 
-<div id="birthdayBanner" style="background: #fff8e1; padding: 10px; border: 1px solid #f0c36d; margin-bottom: 1em; display: none;">
-  <span id="birthdayMessage"></span>
-  <button onclick="document.getElementById('birthdayBanner').style.display='none'" style="float: right;">✖</button>
-</div>
 
 <button onclick="exportAllTransactions()">📁 Export Transactions</button>
 <button onclick="exportTransactionsWithImages()">📸 Export Transactions (with Images)</button>
