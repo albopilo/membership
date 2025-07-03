@@ -21,6 +21,191 @@ function saveMember(member) {
 }
 
 
+function sendEmailNotification(templateId, data) {
+  return emailjs.send("service_dhmya66", templateId, data)
+    .then(() => console.log("✅ Email sent"))
+    .catch(err => console.error("❌ Email send failed:", err));
+}
+
+function getMessagePayload(type, member, meta = {}) {
+  switch (type) {
+    case "birthday": {
+  const birthdayItems = birthdayPerks[member.tier] || [];
+  return {
+    main_message: `🎉 We’re thrilled to celebrate you, {{member_name}}!
+As a cherished {{member_tier}} member, you can now redeem your exclusive birthday rewards designed to make your day just a little more magical.
+`,
+    benefit_1: birthdayItems[0] || "",
+    benefit_2: birthdayItems[1] || "",
+    benefit_3: birthdayItems[2] || "",
+    benefit_4: birthdayItems[3] || "",
+    benefit_5: birthdayItems[4] || "",
+benefit_6: birthdayItems[5] || "",
+benefit_7: birthdayItems[6] || ""
+  };
+}
+    case "upgrade": {
+  const perks = tierBenefits[member.tier] || [];
+  const birthday = birthdayPerks[member.tier] || [];
+
+  return {
+    main_message: `🚀 Congrats, ${member.name}! You've just leveled up to ${member.tier} tier at 13e Café.`,
+    benefit_1: `🌟 Daily Perks:`,
+    benefit_2: `${perks[0] || ""}`,
+    benefit_2: `${perks[1] || ""}`,
+    benefit_3: `${perks[2] || ""}`,
+    benefit_4: `${perks[3] || ""}`,
+    benefit_5: ``,
+    benefit_6: `🎂 Birthday Perks:`,
+    benefit_7: `${birthday[1] || ""}`,
+    benefit_8: `${birthday[2] || ""}`,
+    benefit_9: `${birthday[3] || ""}`,
+    benefit_10: `${birthday[4] || ""}`,
+    benefit_11: `${birthday[5] || ""}`,
+    benefit_12: `${birthday[6] || ""}`
+  };
+}
+
+case "transaction_summary": {
+  const { lastTransaction, cashbackPoints, member } = meta || {};
+  const txDate = lastTransaction?.date
+  ? new Date(lastTransaction.date).toLocaleString()
+  : "(unknown date)";
+
+  return {
+    main_message: `🧾 A new transaction has been added to your 13e Café account.`,
+    benefit_1: `• Transaction Date: ${txDate}`,
+    benefit_2: `• Amount Spent: Rp${lastTransaction?.amount?.toLocaleString()}`,
+    benefit_3: ``,
+    benefit_4: ``,
+    benefit_5: cashbackPoints > 0 ? `• Cashback Earned: Rp${cashbackPoints.toLocaleString()}` : "• Cashback Earned: –",
+    benefit_6: `• Available Cashback Points: Rp${(member?.redeemablePoints ?? 0).toLocaleString()}`,
+    benefit_7: ""
+  };
+}
+
+    case "cashback_expire":
+      return {
+        main_message: `⚠️ Reminder: Your cashback points are expiring soon!`,
+        benefit_1: "Visit the café to redeem them before the deadline.",
+        benefit_2: "",
+        benefit_3: ""
+      };
+    default:
+      return {
+        main_message: `Hello from 13e Café ☕`,
+        benefit_1: "",
+        benefit_2: "",
+        benefit_3: ""
+      };
+  }
+}
+
+function buildBirthdayMessage(member) {
+  return `
+    🎉 Happy Birthday, ${member.name}!<br><br>
+    You’ve unlocked your <strong>${member.tier} Birthday Package:</strong><br>
+    <ul>
+      ${tierBenefits[member.tier].map(b => `<li>${b}</li>`).join("")}
+    </ul>
+    Come by 13e Café today and let’s celebrate you! 🎁
+  `;
+}
+
+async function testBirthdayEmail(member) {
+  const payload = {
+    member_name: member.name,
+    member_email: member.email,
+    ...getMessagePayload("birthday", member),
+    closing_line: "Drop by 13e Café today to claim your treats — we can’t wait to celebrate with you! 🎂",
+    subject_line: getSubjectForType("birthday", member)
+  };
+
+  await sendEmailNotification("template_2q6hh6g", payload);
+}
+
+async function sendUpgradeEmail(member) {
+  const payload = {
+    member_name: member.name,
+    member_email: member.email,
+    ...getMessagePayload("upgrade", member),
+    closing_line: "Enjoy your new status and don’t forget to say hi on your next visit! ☕🎁",
+    subject_line: getSubjectForType("upgrade", member)
+  };
+
+  await sendEmailNotification("template_2q6hh6g", payload);
+}
+
+async function sendTransactionSummaryEmail(member, tx) {
+  const payload = {
+    member_name: member.name,
+    member_email: member.email,
+    ...getMessagePayload("transaction_summary", member, {
+      lastTransaction: tx,
+      cashbackPoints: tx.cashback || 0,
+      member
+    }),
+    closing_line: "Thank you for your continued loyalty — we’ll see you again soon! ☕",
+    subject_line: getSubjectForType("transaction_summary", member)
+  };
+
+  if (tx.fileData) {
+    payload.attachment_base64 = tx.fileData; // Optional: you'll add this field to your EmailJS template
+  }
+
+  await sendEmailNotification("template_2q6hh6g", payload);
+}
+
+
+function getSubjectForType(type, member) {
+  switch (type) {
+    case "birthday":
+      return `Celebrate in Style: Your Exclusive 13e Birthday Rewards`;
+    case "upgrade":
+      return `🚀 Congrats, ${member.name}! Welcome to ${member.tier} Status`;
+    case "cashback_expire":
+      return `⏳ Don’t Let Your Cashback Expire – Redeem Now, ${member.name}!`;
+    case "transaction_summary":
+      return `🧾 Your Transaction Has Been Recorded – Cashback Updated!`;
+    case "welcome":
+      return `☕ Welcome to 13e Café Rewards, ${member.name}!`;
+    default:
+      return `Hello from 13e Café ☕`;
+  }
+}
+
+
+async function sendWelcomeToAllMembers() {
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  for (const member of members) {
+    if (!member.email) continue; // Skip those without email
+
+    // OPTIONAL: check if already welcomed
+    if (member.welcomed === true) continue;
+
+    try {
+      await sendEmailNotification("welcome_member", {
+        member_name: member.name,
+        member_email: member.email
+      });
+
+      // OPTIONAL: mark as welcomed
+      await db.collection("members").doc(member.id).update({
+        welcomed: true
+      });
+
+      console.log(`✅ Sent welcome to ${member.name}`);
+    } catch (err) {
+      console.error(`❌ Failed to send to ${member.name}:`, err);
+    }
+  }
+
+  alert("🎉 Welcome emails sent to all applicable members!");
+}
+
+
 function extractTotalAmount(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -226,24 +411,42 @@ if (searchInput) {
 
   const tierBenefits = {
     Bronze: [
-      "10% off at 13e Café",
-      "5% off Honda motorbike service (excl. spare parts)",
-      "🎂 Birthday Treat: free drink/snack + 30% off Honda service"
+      "- 10% off at 13e Café",
+      "- 5% off Honda motorbike service (excl. spare parts)",
     ],
     Silver: [
-      "15% off at 13e Café",
-      "10% off Honda service + 5% off at Millennium",
-      "💰 5% cashback (Rp15k/day cap)",
-      "🎂 Birthday: free drink+snack, 50% off Millennium, 30% off service"
+      "- 15% off at 13e Café",
+      "- 10% off Honda service + 5% off at Millennium",
+      "- 5% cashback (Rp15k/day cap)",
     ],
     Gold: [
-      "20% off at 13e Café",
-      "15% off Honda service + 10% off at Millennium",
-      "🏨 Free room upgrade (every 6 months)",
-      "💰 5% cashback (Rp30k/day cap) + new unit voucher",
-      "🎁 VIP Birthday: deluxe room, food/drink/snack, 30% cashback, VIP lounge access"
+      "- 20% off at 13e Café",
+      "- 15% off Honda service + 10% off at Millennium",
+      "- 🏨 Free room upgrade (every 6 months)",
+      "- 💰 5% cashback (Rp30k/day cap) + new unit voucher",
     ]
   };
+
+const birthdayPerks = {
+  Bronze: [
+    "🎂 Birthday Treat:",
+    "- Free drink/snack + 30% off Honda service"
+  ],
+  Silver: [
+    "🎂 Birthday Treat:",
+    "- Free drink and snack",
+    "- 50% off at Millennium",
+    "- 30% off Honda service"
+  ],
+  Gold: [
+    "🎂 VIP Birthday Package:",
+    "- 🏨 Free Deluxe room for one night",
+    "- 🍽️ Free Food+drink+snack combo",
+    "- 💰 30% cashback (Rp30k/day cap)",
+    "- 🍽️ Free VIP lounge access at 13e Café",
+    "- 🎁 Optional Free birthday gift delivered to home"
+  ]
+};
 
 async function searchMembersByName(keyword) {
   const snapshot = await db.collection("members")
@@ -273,8 +476,9 @@ async function searchMembersByName(keyword) {
   card.innerHTML = `
     <span class="tier-${member.tier.toLowerCase()}">●</span>
     <strong>${member.name}</strong> (${tierKey})<br>
-    <ul style="margin:4px 0 8px; padding-left:16px; font-size:0.85em; color:#555;">
-      ${(tierBenefits[tierKey] || []).map(b => `<li>${b}</li>`).join("")}
+    <ul style="margin:4px 0 8px; padding-left:16px; font-size:0.75em; color:#555;">
+       ${(tierBenefits[tierKey] || []).map(b => `<li>☕ ${b}</li>`).join("")}
+  ${(birthdayPerks[tierKey] || []).map(b => `<li>🎉 ${b}</li>`).join("")}
     </ul>
   `;
 
@@ -390,16 +594,26 @@ const newMember = {
 };
 
     try {
-      await saveMember(newMember);
-      alert(`✅ ${name} added!`);
-      window.location.href = "index.html";
-    } catch (err) {
+  newMember.welcomed = true; // 👈 Set flag here
+  await saveMember(newMember);
+
+  await sendEmailNotification("template_hi5egvi", {
+    member_name: name,
+    member_email: email
+  });
+
+  alert(`✅ ${name} added!`);
+  window.location.href = "index.html";
+} catch (err) {
       console.error("Failed to save member:", err);
       alert("⚠️ Failed to add member. Please try again.");
     }
   });
 
 document.addEventListener("DOMContentLoaded", () => {
+
+
+
   if (!isAdmin && document.getElementById("newTier")) {
     const tierSelect = document.getElementById("newTier");
     tierSelect.value = "bronze";
@@ -587,39 +801,60 @@ document.getElementById("claimRoomUpgrade")?.addEventListener("click", async () 
 
   // 💳 Transaction History Table with Cashback
   if (member.transactions?.length > 0) {
-    const historySection = document.createElement("div");
-    historySection.innerHTML = `
-      <h3>Transaction History</h3>
-      <table style="border-collapse:collapse;width:100%;font-size:0.9em;">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Amount</th>
-            <th>Cashback</th>
-          </tr>
-        </thead>
-        <tbody>
-${member.transactions.slice().reverse().map(tx => {
-  const txDate = new Date(tx.date);
-  const txDateStr = txDate.toLocaleDateString();
-const capped = tx.note?.includes("capped")
-  ? `<br><small style="color:crimson;">🎯 ${tx.note}</small>`
-  : "";
+  const historySection = document.createElement("div");
 
-  return `
-    <tr>
-      <td>${txDateStr}</td>
-      <td>Rp${tx.amount.toLocaleString()}</td>
-      <td style="color:${tx.cashback ? 'green' : '#999'};">
-        ${tx.cashback ? `+Rp${tx.cashback.toLocaleString()}` : '–'}${capped}
-      </td>
-    </tr>`;
-}).join("")}
-        </tbody>
-      </table>
-    `;
-    document.getElementById("memberDetails").appendChild(historySection);
-  }
+  const rows = member.transactions.slice().reverse().map((tx, index) => {
+    const txDate = new Date(tx.date);
+    const txDateStr = txDate.toLocaleDateString();
+    const capped = tx.note?.includes("capped")
+      ? `<br><small style="color:crimson;">🎯 ${tx.note}</small>` : "";
+
+    return `
+      <tr>
+        <td>${txDateStr}</td>
+        <td>Rp${tx.amount.toLocaleString()}</td>
+        <td style="color:${tx.cashback ? 'green' : '#999'};">
+          ${tx.cashback ? `+Rp${tx.cashback.toLocaleString()}` : '–'}${capped}
+        </td>
+        ${isAdmin ? `<td><button class="deleteTxBtn" data-index="${member.transactions.length - 1 - index}">🗑</button></td>` : ""}
+      </tr>`;
+  }).join("");
+
+  historySection.innerHTML = `
+    <h3>Transaction History</h3>
+    <table style="border-collapse:collapse;width:100%;font-size:0.9em;">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Amount</th>
+          <th>Cashback</th>
+          ${isAdmin ? `<th>Delete</th>` : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  `;
+
+  document.getElementById("memberDetails").appendChild(historySection);
+}
+
+if (isAdmin) {
+  document.querySelectorAll(".deleteTxBtn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const i = parseInt(btn.dataset.index);
+      if (!confirm("Delete this transaction?")) return;
+
+      const removedTx = member.transactions.splice(i, 1)[0];
+      member.redeemablePoints = Math.max(0, (member.redeemablePoints || 0) - (removedTx.cashback || 0));
+
+      await saveMember(member);
+      alert("🗑 Transaction deleted.");
+      location.reload();
+    });
+  });
+}
 
 const redeemBtn = document.getElementById("redeemBtn");
 if (redeemBtn) {
@@ -634,6 +869,20 @@ if (redeemBtn) {
     location.reload();
   });
 }
+
+document.querySelectorAll(".deleteTxBtn").forEach(btn => {
+  btn.addEventListener("click", async (e) => {
+    const i = parseInt(btn.dataset.index);
+    if (!confirm(`Delete transaction on ${new Date(member.transactions[i].date).toLocaleDateString()}?`)) return;
+
+    const removedTx = member.transactions.splice(i, 1)[0];
+    member.redeemablePoints = Math.max(0, (member.redeemablePoints || 0) - (removedTx.cashback || 0));
+
+    await saveMember(member);
+    alert("🗑 Transaction deleted.");
+    location.reload();
+  });
+});
 
 
 
@@ -706,6 +955,10 @@ const finishTransaction = async () => {
   member.redeemablePoints = (member.redeemablePoints || 0) + cashback;
 
   const upgraded = await updateTier(member);
+
+if (member.email) {
+  await sendTransactionSummaryEmail(member, txFinal);
+}
 
 if (!upgraded) {
   await saveMember(member); // Only save again if not already saved during upgrade
@@ -907,6 +1160,9 @@ console.log("🔎 Checking for upgrade:", member.name, {
   member.yearlySinceUpgrade = 0;
   member.monthlySinceUpgrade = 0;
 member.tier = newTier.charAt(0).toUpperCase() + newTier.slice(1).toLowerCase();
+if (member.email) {
+  await sendUpgradeEmail(member); // 💌 Congratulates them by email
+}
   await saveMember(member);
   alert(`🎉 ${member.name} has just been upgraded to ${newTier} tier!`);
   console.log(`🎉 ${member.name} upgraded to ${newTier}`);
@@ -1027,7 +1283,48 @@ async function showActivityFeed() {
 
 
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!isAdmin) return;
+  console.log("👀 Birthday check running");
+
+  const snapshot = await db.collection("members").get();
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+
+  for (const member of members) {
+    if (!member.birthdate || !member.email) continue;
+
+    const b = new Date(member.birthdate);
+    const isBirthdayToday = b.getDate() === today.getDate() && b.getMonth() === today.getMonth();
+
+    const lastSent = new Date(member.lastBirthdayEmail || 0);
+    const daysSince = (today - lastSent) / (1000 * 60 * 60 * 24);
+
+    if (isBirthdayToday && daysSince >= 7) {
+      await testBirthdayEmail(member);
+      await db.collection("members").doc(member.id).update({
+        lastBirthdayEmail: todayStr
+      });
+    }
+  }
+
+  console.log("🎂 Birthday email auto-check complete.");
+});
+
+
+if (isAdmin && document.getElementById("sendAllWelcomeBtn")) {
+  const btn = document.getElementById("sendAllWelcomeBtn");
+  btn.style.display = "inline-block";
+  btn.addEventListener("click", () => {
+    if (confirm("Send welcome email to all members who haven't received one yet?")) {
+      sendWelcomeToAllMembers();
+    }
+  });
+}
+
+
+
 if (document.getElementById("tierChart")) {
   renderTierChart();
   showTopMembers();
@@ -1060,7 +1357,6 @@ if (document.getElementById("tierChart")) {
       });
     }
   }
-});
 
 if (document.getElementById("silverRate")) {
   loadCashbackSettings();
