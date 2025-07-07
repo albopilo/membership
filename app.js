@@ -1055,7 +1055,8 @@ renderMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 // 📷 Export with embedded base64 image
 async function exportTransactionsWithImages() {
   const snapshot = await db.collection("members").get();
-renderMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); // 👈 Add this line
+  renderMembers(members);
 
   const rows = [["Member ID", "Member Name", "Date", "Amount", "Image"]];
   members.forEach(member => {
