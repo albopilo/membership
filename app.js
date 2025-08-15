@@ -1279,8 +1279,10 @@ async function renderTierChart() {
 
   snapshot.forEach(doc => {
     const tier = (doc.data().tier || "Bronze").trim();
-    if (data[tier]) data[tier]++;
+    if (tier in data) data[tier]++;
   });
+
+  console.log("Tier chart data:", data);
 
   new Chart(document.getElementById("tierChart"), {
     type: "pie",
