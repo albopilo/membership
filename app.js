@@ -328,7 +328,11 @@ function isSameDay(d1, d2) {
 const modeSelect = document.getElementById("modeSelect");
 
 if (modeSelect) {
-  const savedMode = localStorage.getItem("isAdmin") === "true" ? "admin" : "public";
+  const savedMode = localStorage.getItem("isAdmin") === "true"
+    ? "admin"
+    : localStorage.getItem("mode") === "reader"
+      ? "reader"
+      : "public";
   modeSelect.value = savedMode;
 
   modeSelect.addEventListener("change", async (e) => {
@@ -339,20 +343,57 @@ if (modeSelect) {
       if (password === "1234") {
         alert("✅ Admin mode enabled.");
         localStorage.setItem("isAdmin", true);
+        localStorage.setItem("mode", "admin");
         location.reload();
       } else {
         alert("❌ Incorrect password. Staying in public mode.");
-        modeSelect.value = "public";
+        modeSelect.value = "reader";
         localStorage.setItem("isAdmin", false);
+        localStorage.setItem("mode", "reader");
       }
+    } else if (selected === "public") {
+      const password = prompt("🔐 Enter admin mode password:");
+      if (password === "kafe") {
+        alert("✅ Public mode enabled.");
+        localStorage.setItem("isAdmin", false);
+        localStorage.setItem("mode", "public");
+        location.reload();
+      } else {
+        alert("❌ Incorrect password. Staying in public mode.");
+        modeSelect.value = "reader";
+        localStorage.setItem("isAdmin", false);
+        localStorage.setItem("mode", "reader");
+      }
+    } else if (selected === "reader") {
+      localStorage.setItem("isAdmin", false);
+      localStorage.setItem("mode", "reader");
+      location.reload();
     } else {
       localStorage.setItem("isAdmin", false);
+      localStorage.setItem("mode", "public");
       location.reload();
     }
   });
 }
 
 const isAdmin = localStorage.getItem("isAdmin") === "true";
+
+if (isAdmin && document.getElementById("backupDbBtn")) {
+  document.getElementById("backupDbBtn").addEventListener("click", async () => {
+    const snapshot = await db.collection("members").get();
+    const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const blob = new Blob([JSON.stringify(members, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `13e-members-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    alert("✅ Backup downloaded!");
+  });
+}
+
+const isReader = localStorage.getItem("mode") === "reader";
 const settingsRef = db.collection("settings").doc("tierThresholds");
 let tierSettings = {};
 
@@ -553,24 +594,31 @@ if (newKTPInput) {
 }
 
 // -------- ➕ ADD PAGE --------
+// ...existing code...
 if (document.getElementById("addMemberBtn")) {
   document.getElementById("addMemberBtn").addEventListener("click", async () => {
-if (!isAdmin) {
-  const tierSelect = document.getElementById("newTier");
-  tierSelect.value = "bronze";
-  tierSelect.disabled = true;
+    if (isReader) {
+      alert("Reader mode: cannot add members.");
+      return;
+    }
 
-  // Optional: add a note
-  const note = document.createElement("small");
-  note.textContent = "Public users are assigned Bronze tier automatically.";
-  note.style.color = "gray";
-  tierSelect.parentElement.appendChild(note);
-}
+    if (!isAdmin) {
+      const tierSelect = document.getElementById("newTier");
+      tierSelect.value = "bronze";
+      tierSelect.disabled = true;
+
+      // Optional: add a note
+      const note = document.createElement("small");
+      note.textContent = "Public users are assigned Bronze tier automatically.";
+      note.style.color = "gray";
+      tierSelect.parentElement.appendChild(note);
+    }
+
     const name = document.getElementById("newName").value.trim();
     const birthdate = document.getElementById("newBirthdate").value;
     const phone = document.getElementById("newPhone").value;
     const email = document.getElementById("newEmail").value;
-const ktp = document.getElementById("newKTP").value;
+    const ktp = document.getElementById("newKTP").value;
     const tier = isAdmin ? document.getElementById("newTier").value : "bronze";
 
     if (!name) {
@@ -578,68 +626,56 @@ const ktp = document.getElementById("newKTP").value;
       return;
     }
 
-
-
-const newMember = {
-  id: Date.now().toString(),
-  name,
-  nameLower: name.toLowerCase(), // ✅ Add this!
-  birthdate,
-  phone,
-  email,
-  ktp,
-  tier,
-  transactions: [],
-  lastRoomUpgrade: null // 👈 Add this line
-};
+    const newMember = {
+      id: Date.now().toString(),
+      name,
+      nameLower: name.toLowerCase(),
+      birthdate,
+      phone,
+      email,
+      ktp,
+      tier,
+      transactions: [],
+      lastRoomUpgrade: null
+    };
 
     try {
-  newMember.welcomed = true; // 👈 Set flag here
-  await saveMember(newMember);
+      newMember.welcomed = true;
+      await saveMember(newMember);
 
-  await sendEmailNotification("template_hi5egvi", {
-    member_name: name,
-    member_email: email
-  });
+      await sendEmailNotification("template_hi5egvi", {
+        member_name: name,
+        member_email: email
+      });
 
-  alert(`✅ ${name} added!`);
-  window.location.href = "index.html";
-} catch (err) {
+      // Optionally, also disable the button visually for reader mode:
+      if (isReader) {
+        document.getElementById("addMemberBtn").disabled = true;
+        document.getElementById("addMemberBtn").title = "Reader mode: cannot add members";
+      }
+
+      alert(`✅ ${name} added!`);
+      window.location.href = "index.html";
+    } catch (err) {
       console.error("Failed to save member:", err);
       alert("⚠️ Failed to add member. Please try again.");
     }
   });
 
-document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!isAdmin && document.getElementById("newTier")) {
+      const tierSelect = document.getElementById("newTier");
+      tierSelect.value = "bronze";
+      tierSelect.disabled = true;
 
-
-
-  if (!isAdmin && document.getElementById("newTier")) {
-    const tierSelect = document.getElementById("newTier");
-    tierSelect.value = "bronze";
-    tierSelect.disabled = true;
-
-    const note = document.createElement("small");
-    note.textContent = "Public users are assigned Bronze tier automatically.";
-    note.style.color = "gray";
-    tierSelect.parentElement.appendChild(note);
-  }
-});
-}
-
-// -------- 🔍 DETAILS PAGE --------
-if (document.getElementById("memberDetails")) {
-  const params = new URLSearchParams(window.location.search);
-  const memberId = params.get("id");
-
-  db.collection("members").doc(memberId).get().then(doc => {
-    if (!doc.exists) {
-      document.getElementById("memberDetails").innerHTML = "<p>Member not found.</p>";
-    } else {
-      renderDetails({ id: doc.id, ...doc.data() });
+      const note = document.createElement("small");
+      note.textContent = "Public users are assigned Bronze tier automatically.";
+      note.style.color = "gray";
+      tierSelect.parentElement.appendChild(note);
     }
   });
 }
+
 
 async function renderDetails(member) {
 
@@ -669,16 +705,16 @@ member.redeemablePoints = member.redeemablePoints || 0;
   await updateTier(member);
 
   document.getElementById("memberDetails").innerHTML = `
-${isAdmin ? `
-  <button id="editMemberBtn">✏️ Edit Member Details</button>
-` : ""}
-
-
+    ${isAdmin ? `<button id="editMemberBtn">✏️ Edit Member Details</button>` : ""}
+    ${isReader ? `<small style="color:gray;">Reader mode: view only</small>` : ""}
+    <button id="backBtn">↩️ Back</button>
 
 <p>Available Cashback Points: <strong>Rp${member.redeemablePoints}</strong></p>
 
-<input type="number" id="redeemAmount" placeholder="Redeem Rp..." />
-<button id="redeemBtn">Redeem</button>
+
+<input type="number" id="redeemAmount" placeholder="Redeem Rp..." ${isReader ? "readonly disabled" : ""} />
+<button id="redeemBtn" ${isReader ? "disabled" : ""}>Redeem</button>
+
 
 
 ${member.tier === "Gold" && member.roomUpgradeHistory?.length > 0 ? `
@@ -722,22 +758,40 @@ ${member.tier === "Gold" ? (() => {
 
 
     <h3>Add Transaction</h3>
-<input type="number" id="txAmount" placeholder="Amount Spent" ${isAdmin ? "" : "readonly"} />
+<input type="number" id="txAmount" placeholder="Amount Spent" ${isReader ? "readonly disabled" : ""} />
 ${!isAdmin ? `<small style="color:gray;">Amount is auto-filled from scanned receipt</small>` : ""}
-    <input type="file" id="txFile" accept="image/*,.pdf" />
+    <input type="file" id="txFile" accept="image/*,.pdf" ${isReader ? "disabled" : ""} />
 
 <p id="ocrStatus" style="color:#777; font-style:italic;"></p>
-    <button id="addTxBtn">Add</button><br><br>
+<button id="addTxBtn" ${isReader ? "disabled" : ""}>Add</button><br><br>
+<button id="deleteMemberBtn" style="background-color:crimson; color:white;" ${isReader ? "disabled" : (isAdmin ? "" : "disabled")}>
+  🗑 Delete Member
+</button>
 
-    <button id="deleteMemberBtn" style="background-color:crimson; color:white;">
-      🗑 Delete Member
-    </button>
   `;
 
-if (isAdmin) {
-  document.getElementById("editMemberBtn")?.addEventListener("click", () => {
+document.getElementById("backBtn").addEventListener("click", () => {
+    window.location.href = "index.html";
+  });
+
+if (isReader) {
+    // Remove all other event listeners and disable all clickable elements
+    // No need to add listeners for edit, redeem, add transaction, delete, etc.
+    return;
+  }
+
+  if (isAdmin) {
+    document.getElementById("editMemberBtn")?.addEventListener("click", () => {
     window.location.href = `edit.html?id=${member.id}`;
   });
+}
+
+if (!isReader) {
+  // Add all event listeners for editing, redeeming, adding, deleting, etc.
+  // Example:
+  // document.getElementById("addTxBtn").addEventListener("click", async () => { ... });
+  // document.getElementById("deleteMemberBtn").addEventListener("click", async () => { ... });
+  // ...other listeners...
 }
 
 
@@ -768,7 +822,6 @@ document.getElementById("saveEditsBtn")?.addEventListener("click", async () => {
   alert("✅ Changes saved!");
   location.reload();
 });
-
 
 
 
@@ -996,6 +1049,11 @@ if (document.getElementById("editForm")) {
 }
 
 function renderEditForm(member) {
+  if (isReader) {
+  document.querySelectorAll("#editForm input, #editForm select").forEach(el => el.disabled = true);
+  document.getElementById("saveEditsBtn").disabled = true;
+  document.getElementById("saveEditsBtn").title = "Reader mode: cannot edit";
+}
   document.getElementById("editForm").innerHTML = `
     <label>Name:<br><input type="text" id="editName" value="${member.name}" /></label><br>
     <label>Birthdate:<br><input type="date" id="editBirth" value="${member.birthdate}" /></label><br>
@@ -1381,3 +1439,98 @@ if (document.getElementById("saveSettingsBtn")) {
     saveTierSettings();
   });
 }
+
+if (document.getElementById("memberDetails")) {
+  const params = new URLSearchParams(window.location.search);
+  const memberId = params.get("id");
+  if (memberId) {
+    db.collection("members").doc(memberId).get().then(doc => {
+      if (!doc.exists) {
+        document.getElementById("memberDetails").innerHTML = "<p>Member not found.</p>";
+      } else {
+        renderDetails({ id: doc.id, ...doc.data() });
+      }
+    });
+  }
+}
+
+// -------- 📄 MEMBER LIST WITH PAGINATION --------
+let memberPageSize = 5; // default
+let allMembers = [];    // cache for all loaded members
+
+async function loadAllMembers() {
+  const snapshot = await db.collection("members").orderBy("nameLower").get();
+  allMembers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  renderMembersPaged();
+}
+
+function renderMembersPaged() {
+  const list = document.getElementById("memberList");
+  list.innerHTML = "";
+
+  // Filter by tier if selected
+  const tierFilter = document.getElementById("tierFilter")?.value || "";
+  let filteredMembers = allMembers;
+  if (tierFilter) {
+    filteredMembers = filteredMembers.filter(m => (m.tier || "Bronze") === tierFilter);
+  }
+
+  // Now apply page size AFTER filtering
+  let membersToShow = [];
+  if (memberPageSize === "all") {
+    membersToShow = filteredMembers;
+  } else {
+    membersToShow = filteredMembers.slice(0, Number(memberPageSize));
+  }
+
+  renderMembers(membersToShow);
+
+  const controls = document.getElementById("memberListControls");
+  if (controls) {
+    controls.style.display = "block";
+  }
+}
+
+// Listen for page size changes
+document.getElementById("applyPageSizeBtn")?.addEventListener("click", () => {
+  const select = document.getElementById("memberPageSize");
+  memberPageSize = select.value;
+  renderMembersPaged();
+});
+
+// Listen for tier filter changes
+document.getElementById("tierFilter")?.addEventListener("change", renderMembersPaged);
+
+// Initial load
+if (document.getElementById("memberList")) {
+  loadAllMembers();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const isAdmin = localStorage.getItem("isAdmin") === "true";
+
+  // Show and enable Backup button for admin
+  const backupBtn = document.getElementById("backupDbBtn");
+  if (isAdmin && backupBtn) {
+    backupBtn.style.display = "inline-block";
+    backupBtn.addEventListener("click", async () => {
+      const snapshot = await db.collection("members").get();
+      const members = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const blob = new Blob([JSON.stringify(members, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `13e-members-backup-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      alert("✅ Backup downloaded!");
+    });
+  }
+
+  // Show and enable Restore button for admin
+  const restoreBtn = document.getElementById("restoreDbBtn");
+  if (isAdmin && restoreBtn) {
+    restoreBtn.style.display = "inline-block";
+    restoreBtn.onclick = () => window.location.href = "restore.html";
+  }
+});

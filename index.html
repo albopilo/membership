@@ -22,10 +22,13 @@
   <button onclick="location.href='add.html'">+ Add Member</button>
 <button onclick="location.href='dashboard.html'">📊 Dashboard</button>
 <button id="sendAllWelcomeBtn" style="display:none;">📧 Send Welcome to All</button>
+<button id="backupDbBtn" style="display:none;">💾 Backup Database</button>
+<button id="restoreDbBtn" style="display:none;">🔄 Restore Database</button>
 
 <label for="modeSelect"><strong>Mode:</strong></label>
 <select id="modeSelect">
-  <option value="public">Public</option>
+  <option value="reader">Public</option>
+  <option value="public">Kafe</option>
   <option value="admin">Administrator</option>
 </select>
 
@@ -37,11 +40,29 @@
   <button onclick="document.getElementById('birthdayBanner').style.display='none'" style="float: right;">✖</button>
 </div>
 <div id="memberSection">
+  <!-- Add this above #memberList -->
+<label for="tierFilter"><strong>Filter by Tier:</strong></label>
+<select id="tierFilter">
+  <option value="">All</option>
+  <option value="Bronze">Bronze</option>
+  <option value="Silver">Silver</option>
+  <option value="Gold">Gold</option>
+</select>
   <div id="memberList"></div>
   <button id="loadMoreBtn">Load More</button>
 </div>
 
-
+<!-- Place this below your memberList container -->
+<div id="memberListControls" style="margin-top:16px;">
+  <label for="memberPageSize">Show:</label>
+  <select id="memberPageSize">
+    <option value="5">5</option>
+    <option value="10">10</option>
+    <option value="20">20</option>
+    <option value="all">All</option>
+  </select>
+  <button id="applyPageSizeBtn">Apply</button>
+</div>
 
 <button onclick="exportAllTransactions()">📁 Export Transactions</button>
 <button onclick="exportTransactionsWithImages()">📸 Export Transactions (with Images)</button>
