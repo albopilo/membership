@@ -3,8 +3,11 @@
 <button id="restoreBtn">Restore Database</button>
 <div id="restoreStatus"></div>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="app.js"></script>
+<script src="common.js"></script>
+<script src="dashboard-restore-settings.js"></script>
+
 <script>
 document.getElementById("restoreBtn").addEventListener("click", async () => {
   const fileInput = document.getElementById("restoreFile");

@@ -1,73 +1,140 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <meta charset="UTF-8" />
-  <title>13e Café – Home</title>
+  <title>13e Café Loyalty – Members</title>
   <link rel="stylesheet" href="style.css" />
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
-<script>
-  (function(){
-    emailjs.init("BbD0R8hL8K8Y_KwSA"); // Replace with your EmailJS User ID
-  })();
-</script>
+
+  <!-- 🔥 Firebase SDKs (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics-compat.js"></script>
+
+  <!-- 📤 EmailJS -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script>
+    (function(){
+      emailjs.init("BbD0R8hL8K8Y_KwSA"); // replace with your EmailJS user ID
+    })();
+  </script>
+
+  <!-- 🔍 OCR -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.4/dist/tesseract.min.js"></script>
 </head>
 <body>
-  <h1>13e Café Loyalty App</h1>
 
-  <button onclick="location.href='settings.html'">⚙️ Settings</button>
-  <button onclick="location.href='add.html'">+ Add Member</button>
-<button onclick="location.href='dashboard.html'">📊 Dashboard</button>
-<button id="sendAllWelcomeBtn" style="display:none;">📧 Send Welcome to All</button>
-<button id="backupDbBtn" style="display:none;">💾 Backup Database</button>
-<button id="restoreDbBtn" style="display:none;">🔄 Restore Database</button>
+  <header>
+    <h1>13e Café Loyalty Members</h1>
+    <button id="addBtn">Add</button>
+<button id="settingsBtn">Settings</button>
+<button id="dashboardBtn">Dashboard</button>
+<button id="backupMembersBtn" style="background:#00695c;color:white;">
+  💾 Backup All Members (JSON)
+</button>
+    <select id="modeSelect">
+      <option value="reader">Reader</option>
+      <option value="admin">Admin</option>
+      <option value="kafe">Café</option>
+    </select>
+  </header>
 
-<label for="modeSelect"><strong>Mode:</strong></label>
-<select id="modeSelect">
-  <option value="reader">Public</option>
-  <option value="public">Kafe</option>
-  <option value="admin">Administrator</option>
-</select>
+  <!-- 🎂 Birthday banner -->
+  <div id="birthdayBanner" style="display:none;">
+    <p id="birthdayMessage"></p>
+  </div>
 
-  <br><br>
-  <input type="text" id="searchInput" placeholder="Search members..." />
+  <!-- 🔎 Search + filter -->
+  <div class="controls">
+    <input type="text" id="searchInput" placeholder="Search by name..." />
+    <select id="tierFilter">
+      <option value="all">All Tiers</option>
+      <option value="Bronze">Bronze</option>
+      <option value="Silver">Silver</option>
+      <option value="Gold">Gold</option>
+    </select>
+    <select id="pageSizeSelect">
+      <option value="5">5 per page</option>
+      <option value="10">10 per page</option>
+      <option value="20">20 per page</option>
+    </select>
+  </div>
 
-<div id="birthdayBanner" style="background: #fff8e1; padding: 10px; border: 1px solid #f0c36d; margin-bottom: 1em; display: none;">
-  <span id="birthdayMessage"></span>
-  <button onclick="document.getElementById('birthdayBanner').style.display='none'" style="float: right;">✖</button>
-</div>
-<div id="memberSection">
-  <!-- Add this above #memberList -->
-<label for="tierFilter"><strong>Filter by Tier:</strong></label>
-<select id="tierFilter">
-  <option value="">All</option>
-  <option value="Bronze">Bronze</option>
-  <option value="Silver">Silver</option>
-  <option value="Gold">Gold</option>
-</select>
+  <!-- 📋 Member list -->
   <div id="memberList"></div>
-  <button id="loadMoreBtn">Load More</button>
-</div>
 
-<!-- Place this below your memberList container -->
-<div id="memberListControls" style="margin-top:16px;">
-  <label for="memberPageSize">Show:</label>
-  <select id="memberPageSize">
-    <option value="5">5</option>
-    <option value="10">10</option>
-    <option value="20">20</option>
-    <option value="all">All</option>
-  </select>
-  <button id="applyPageSizeBtn">Apply</button>
-</div>
+  <!-- ◀️ Pagination -->
+  <div class="pagination">
+    <button id="prevPage">Prev</button>
+    <button id="nextPage">Next</button>
+  </div>
 
-<button onclick="exportAllTransactions()">📁 Export Transactions</button>
-<button onclick="exportTransactionsWithImages()">📸 Export Transactions (with Images)</button>
-<button onclick="exportJSON()">☁️ Backup to JSON</button>
+  <!-- ⚡ Scripts -->
+  <script src="common.js"></script>
 
-  <script src="app.js"></script>
+  <!-- ✅ Hardcoded perks for rendering and email logic -->
+  <script>
+    window.tierBenefits = {
+      Bronze: [
+        "- 10% off at 13e Café",
+        "- 5% off Honda motorbike service (excl. spare parts)"
+      ],
+      Silver: [
+        "- 15% off at 13e Café",
+        "- 10% off Honda service + 5% off at Millennium",
+        "- 5% cashback (Rp15k/day cap)"
+      ],
+      Gold: [
+        "- 20% off at 13e Café",
+        "- 15% off Honda service + 10% off at Millennium",
+        "- 🏨 Free room upgrade (every 6 months)",
+        "- 💰 5% cashback (Rp30k/day cap) + new unit voucher"
+      ]
+    };
+
+    window.birthdayPerks = {
+      Bronze: [
+        "🎂 Birthday Treat:",
+        "- Free drink/snack + 30% off Honda service"
+      ],
+      Silver: [
+        "🎂 Birthday Treat:",
+        "- Free drink and snack",
+        "- 50% off at Millennium",
+        "- 30% off Honda service"
+      ],
+      Gold: [
+        "🎂 VIP Birthday Package:",
+        "- 🏨 Free Deluxe room for one night",
+        "- 🍽️ Free Food+drink+snack combo",
+        "- 💰 30% cashback (Rp30k/day cap)",
+        "- 🍽️ Free VIP lounge access at 13e Café",
+        "- 🎁 Optional Free birthday gift delivered to home"
+      ]
+    };
+  </script>
+
+  <script src="index-details.js"></script>
+
+  <!-- 🔐 Auth bootstrap -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      firebase.auth().onAuthStateChanged(user => {
+        if (user) {
+          console.log("✅ Using existing sign-in:", user.email || user.uid);
+        } else {
+          const savedMode = localStorage.getItem("mode");
+          if (savedMode === "reader") {
+            firebase.auth().signInAnonymously()
+              .then(() => console.log("✅ Signed in anonymously for Reader mode:", firebase.auth().currentUser.uid))
+              .catch(err => console.error("❌ Anonymous auth error:", err));
+          } else {
+            console.warn("No auth session found — please log in manually.");
+          }
+        }
+      });
+    });
+  </script>
+
 </body>
 </html>
