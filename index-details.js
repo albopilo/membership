@@ -1331,32 +1331,31 @@ window.wireDetailsUI = function() {
     return;
   }
 
-  // Step 1: Try sessionStorage cache
+  // Step 1: Try sessionStorage cache for instant paint
   const cache = sessionStorage.getItem("selectedMember");
   if (cache) {
     try {
       const parsed = JSON.parse(cache);
       if (parsed.data.id === memberId && Date.now() - parsed.ts < MEMBER_CACHE_TTL) {
-        renderDetails(parsed.data); // Instant paint
+        renderDetails(parsed.data);
       }
     } catch {}
   }
 
-  // Step 2: Firestore + settings in parallel
-  Promise.all([
-    loadTierSettingsFromCloud(),
-    db.collection("members").doc(memberId).get()
-  ]).then(([_, doc]) => {
-    if (!doc.exists) {
-      container.innerHTML = "<p>Member not found.</p>";
-      return;
-    }
-    const member = { id: doc.id, ...doc.data() };
-    renderDetails(member); // Hydrate with fresh data
-  }).catch(err => {
-    console.error("Details load error:", err);
-    container.innerHTML = `<p>Error loading member: ${err.message}</p>`;
-  });
+  // Step 2: Live Firestore listener for real-time updates
+  loadTierSettingsFromCloud(); // still load settings once
+  db.collection("members").doc(memberId)
+    .onSnapshot(doc => {
+      if (!doc.exists) {
+        container.innerHTML = "<p>Member not found.</p>";
+        return;
+      }
+      const member = { id: doc.id, ...doc.data() };
+      renderDetails(member); // re-render on every change
+    }, err => {
+      console.error("Details live load error:", err);
+      container.innerHTML = `<p>Error loading member: ${err.message}</p>`;
+    });
 };
 
 
