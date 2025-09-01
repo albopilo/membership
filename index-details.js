@@ -750,63 +750,88 @@ async function handleReceiptOCR(file, statusEl, amountEl) {
   }
 }
 
-// ---------- Tier calc with creation-year demotion protection ----------
+// Re-evaluates member.tier using thresholds, with a robust "no demote if created this year" guard.
+// Falls back to upgradeDate when createdAt is missing, so new members aren’t demoted prematurely.
 async function updateTier(member) {
+  // Ensure settings are loaded
   if (!window.tierSettings || !Object.keys(window.tierSettings).length) {
     await loadTierSettingsFromCloud();
   }
 
-  // Support both nested {thresholds:{...}} and flat fields
-  const t = window.tierSettings?.thresholds || window.tierSettings || {};
-  const bronzeToSilverMonth = t.bronzeToSilverMonth ?? 500000;
-  const bronzeToSilverYear  = t.bronzeToSilverYear  ?? 1200000;
-  const silverStayYear      = t.silverStayYear      ?? 500000;
-  const silverToGoldMonth   = t.silverToGoldMonth   ?? 1250000;
-  const silverToGoldYear    = t.silverToGoldYear    ?? 4000000;
-  const goldStayYear        = t.goldStayYear        ?? 2000000;
+  // Resolve thresholds (supports {thresholds:{...}} or flat shape)
+  const ts = window.tierSettings?.thresholds || window.tierSettings || {};
+  const bronzeToSilverMonth = Number(ts.bronzeToSilverMonth ?? 500000);
+  const bronzeToSilverYear  = Number(ts.bronzeToSilverYear  ?? 1200000);
+  const silverStayYear      = Number(ts.silverStayYear      ?? 500000);
+  const silverToGoldMonth   = Number(ts.silverToGoldMonth   ?? 1250000);
+  const silverToGoldYear    = Number(ts.silverToGoldYear    ?? 4000000);
+  const goldStayYear        = Number(ts.goldStayYear        ?? 2000000);
 
+  // Normalize current tier
   const currentTier = toProperTier(member.tier);
-  const monthSpend  = member.monthlySinceUpgrade ?? 0;
-  const yearSpend   = member.yearlySinceUpgrade ?? 0;
 
-  // ✅ creation-year check
-  let createdYear = null;
+  // Use the since-upgrade spend fields (recomputed elsewhere when needed)
+  const monthSpend = Number(member.monthlySinceUpgrade ?? 0);
+  const yearSpend  = Number(member.yearlySinceUpgrade ?? 0);
+
+  // Robust creation-year guard: prefer createdAt; fallback to upgradeDate
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  let originDate = null;
+
   if (member.createdAt) {
-    const createdDate = member.createdAt.toDate ? member.createdAt.toDate() : new Date(member.createdAt);
-    if (createdDate instanceof Date && !isNaN(createdDate)) {
-      createdYear = createdDate.getFullYear();
-    }
+    originDate = member.createdAt.toDate ? member.createdAt.toDate() : new Date(member.createdAt);
+  } else if (member.upgradeDate) {
+    // Fallback ensures newly upgraded members this year aren’t demoted immediately
+    originDate = new Date(member.upgradeDate);
   }
-  const thisYear = new Date().getFullYear();
-  const isNewThisYear = createdYear === thisYear;
+  const isNewThisYear =
+    originDate instanceof Date && !isNaN(originDate) && originDate.getFullYear() === thisYear;
 
   let newTier = currentTier;
 
+  // Promotions (always allowed)
   if (currentTier === "Bronze") {
     if (monthSpend >= bronzeToSilverMonth || yearSpend >= bronzeToSilverYear) {
       newTier = "Silver";
       member.monthlySinceUpgrade = 0;
       member.yearlySinceUpgrade = 0;
     }
-  }
-  else if (currentTier === "Silver") {
+  } else if (currentTier === "Silver") {
     if (monthSpend >= silverToGoldMonth || yearSpend >= silverToGoldYear) {
       newTier = "Gold";
       member.monthlySinceUpgrade = 0;
       member.yearlySinceUpgrade = 0;
+    } else {
+      // Demotion (guarded)
+      if (!isNewThisYear && yearSpend < silverStayYear) {
+        newTier = "Bronze";
+        // No spend reset on demotion
+      }
     }
-    else if (!isNewThisYear && yearSpend < silverStayYear) {
-      newTier = "Bronze";
-    }
-  }
-  else if (currentTier === "Gold") {
+  } else if (currentTier === "Gold") {
+    // Demotion (guarded)
     if (!isNewThisYear && yearSpend < goldStayYear) {
       newTier = "Silver";
+      // No spend reset on demotion
     }
   }
 
   member.tier = newTier;
   return member;
+}
+
+function isNewThisYearGuard(member) {
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  let created = null;
+
+  if (member.createdAt) {
+    created = member.createdAt.toDate ? member.createdAt.toDate() : new Date(member.createdAt);
+  } else if (member.upgradeDate) {
+    created = new Date(member.upgradeDate); // fallback
+  }
+  return created instanceof Date && !isNaN(created) && created.getFullYear() === thisYear;
 }
 
 // Recompute since-upgrade and apply "no demote if created this year"
