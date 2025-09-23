@@ -32,11 +32,20 @@
 <button id="backupMembersBtn" style="background:#00695c;color:white;">
   💾 Backup All Members (JSON)
 </button>
-    <select id="modeSelect">
-      <option value="reader">Reader</option>
-      <option value="admin">Admin</option>
-      <option value="kafe">Café</option>
-    </select>
+<button id="chooseModeBtn">Choose Mode</button>
+
+<!-- Mode modal -->
+<div id="modeModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);justify-content:center;align-items:center;">
+  <div style="background:#fff;padding:20px;border-radius:8px;text-align:center;max-width:300px;">
+    <h3>Select Mode</h3>
+    <button class="modeOption" data-mode="reader">Reader</button>
+    <button class="modeOption" data-mode="cafe">Café</button>
+    <button class="modeOption" data-mode="admin">Admin</button>
+    <br><br>
+    <button id="closeModeModal">Cancel</button>
+  </div>
+</div>
+
   </header>
 
   <!-- 🎂 Birthday banner -->

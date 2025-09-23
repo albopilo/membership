@@ -1386,6 +1386,58 @@ window.wireDetailsUI = function() {
 
 // ---------- Bootstrap ----------
 document.addEventListener("DOMContentLoaded", () => {
+  const chooseBtn = document.getElementById("chooseModeBtn");
+  const modal = document.getElementById("modeModal");
+  const closeBtn = document.getElementById("closeModeModal");
+  const options = document.querySelectorAll(".modeOption");
+
+  chooseBtn.addEventListener("click", () => modal.style.display = "flex");
+  closeBtn.addEventListener("click", () => modal.style.display = "none");
+
+  options.forEach(opt => {
+opt.addEventListener("click", () => {
+  const mode = opt.dataset.mode;
+
+  // Reset all flags first
+  localStorage.removeItem("isAdmin");
+  localStorage.removeItem("isKafe");
+  localStorage.removeItem("isReader");
+
+  if (mode === "admin") {
+    const pwd = prompt("Enter Admin password:");
+    if (pwd !== "123456") {
+      alert("❌ Incorrect password. Access denied.");
+      return;
+    }
+    localStorage.setItem("isAdmin", "true");
+  }
+
+  if (mode === "kafe") {
+    const pwd = prompt("Enter Cafe password:");
+    if (pwd !== "kafe") {
+      alert("❌ Incorrect password. Access denied.");
+      return;
+    }
+    localStorage.setItem("isKafe", "true");
+  }
+
+  if (mode === "reader") {
+    const pwd = prompt("Enter reader password:");
+    if (pwd !== "mille123") {
+      alert("❌ Incorrect password. Access denied.");
+      return;
+    }
+    localStorage.setItem("isReader", "true");
+  }
+
+  localStorage.setItem("mode", mode);
+  alert(`Mode set to ${mode}`);
+  modal.style.display = "none";
+  location.reload();
+});
+});
+
+
   if (typeof setupModeSelect === "function") {
     setupModeSelect(document.getElementById("modeSelect"));
   }

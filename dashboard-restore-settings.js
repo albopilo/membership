@@ -30,6 +30,7 @@ async function loadTierSettings() {
     const snap = await thresholdsRef.get();
     if (snap.exists) {
       const t = snap.data() || {};
+      document.getElementById("classicToBronzeMonth").value   = t.classicToBronzeMonth ?? 70000;
       document.getElementById("monthlyThreshold").value   = t.bronzeToSilverMonth ?? 500000;
       document.getElementById("yearlyThreshold").value    = t.bronzeToSilverYear  ?? 1200000;
       document.getElementById("maintainSilver").value     = t.silverStayYear      ?? 500000;
@@ -72,6 +73,7 @@ async function saveTierSettings() {
   const msg = document.getElementById("tierSaveMsg");
   msg.textContent = "Saving…";
   const payload = {
+    classicToBronzeMonth: parseInt(document.getElementById("classicToBronzeMonth").value) || 0,
     bronzeToSilverMonth: parseInt(document.getElementById("monthlyThreshold").value)   || 0,
     bronzeToSilverYear:  parseInt(document.getElementById("yearlyThreshold").value)    || 0,
     silverStayYear:      parseInt(document.getElementById("maintainSilver").value)     || 0,
@@ -115,6 +117,7 @@ async function recalcAllTiers() {
   const thrSnap = await thresholdsRef.get();
   const t = thrSnap.exists ? thrSnap.data() : {};
   const thresholds = {
+    classicToBronzeMonth: t.classicToBronzeMonth ?? 70000,
     bronzeToSilverMonth: t.bronzeToSilverMonth ?? 500000,
     bronzeToSilverYear:  t.bronzeToSilverYear  ?? 1200000,
     silverStayYear:      t.silverStayYear      ?? 500000,
@@ -163,14 +166,19 @@ async function recalcAllTiers() {
       }
       const isNewThisYear = createdYear === currentYear;
 
-      const currentTier = ((m.tier || "Bronze") + "").trim().toLowerCase();
-      let newTier = currentTier;
+      const currentTier = ((m.tier || "Classic") + "").trim().toLowerCase();
+let newTier = currentTier;
 
-      if (currentTier === "bronze") {
-        if (monthlySinceUpgrade >= thresholds.bronzeToSilverMonth || yearlySinceUpgrade >= thresholds.bronzeToSilverYear) {
-          newTier = "silver";
-        }
-      } else if (currentTier === "silver") {
+// Classic → Bronze rule
+if (currentTier === "classic") {
+  if (monthlySinceUpgrade >= thresholds.classicToBronzeMonth) {
+    newTier = "bronze";
+  }
+} else if (currentTier === "bronze") {
+  if (monthlySinceUpgrade >= thresholds.bronzeToSilverMonth || yearlySinceUpgrade >= thresholds.bronzeToSilverYear) {
+    newTier = "silver";
+  }
+} else if (currentTier === "silver") {
         if (monthlySinceUpgrade >= thresholds.silverToGoldMonth || yearlySinceUpgrade >= thresholds.silverToGoldYear) {
           newTier = "gold";
         } else if (!isNewThisYear && yearlySinceUpgrade < thresholds.silverStayYear) {
