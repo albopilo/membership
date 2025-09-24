@@ -1467,10 +1467,9 @@ if (closeBtn) closeBtn.addEventListener("click", () => modal.style.display = "no
     }
   }
 
-const isAdmin = localStorage.getItem("isAdmin") === "true";
-const isKafe = localStorage.getItem("isKafe") === "true";
-const isReader = localStorage.getItem("isReader") === "true";
-
+const isAdmin = window.isAdmin;
+const isKafe = window.isKafe;
+const isReader = window.isReader;
 
   if (isKafe && !isAdmin) {
     const manualInputSection = document.getElementById("manualInputSection");
