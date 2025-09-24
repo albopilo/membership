@@ -5,9 +5,11 @@ exports.handler = async (event, context) => {
       return { statusCode: 405, body: JSON.stringify({ message: "Method Not Allowed" }) };
     }
 
+    // 👇 Add this to see exactly what the frontend sent
+    console.log("Received body:", event.body);
+
     const { mode, password } = JSON.parse(event.body || "{}");
 
-    // simple hardcoded demo (you’ll hide real passwords later)
     const PASSWORDS = { admin: "123456", kafe: "kafe", reader: "mille123" };
 
     if (!mode || !password) {
@@ -15,13 +17,12 @@ exports.handler = async (event, context) => {
     }
 
     if (PASSWORDS[mode] && password === PASSWORDS[mode]) {
-      // return token + ttl
       return {
         statusCode: 200,
         body: JSON.stringify({
           success: true,
           mode,
-          token: `demo-token-${mode}-${Date.now()}`, // replace with JWT later
+          token: `demo-token-${mode}-${Date.now()}`,
           ttlSeconds: 600
         })
       };
@@ -34,3 +35,4 @@ exports.handler = async (event, context) => {
     return { statusCode: 500, body: JSON.stringify({ success: false, message: "Server error" }) };
   }
 };
+
