@@ -1390,53 +1390,52 @@ document.addEventListener("DOMContentLoaded", () => {
   const closeBtn = document.getElementById("closeModeModal");
   const options = document.querySelectorAll(".modeOption");
 
+  // 🔒 Expected password hashes (very simple obfuscation)
+  const PASSWORDS = {
+    admin: "123456",
+    kafe: "kafe",
+    reader: "mille123"
+  };
+
+  // Helper: simple hash (base64 of string)
+  function hash(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+
+  // Verify localStorage token on every load
+  function verifyMode(mode) {
+    const token = localStorage.getItem(`${mode}Token`);
+    if (!token) return false;
+    return token === hash(PASSWORDS[mode]);
+  }
+
+  // Expose safe flags
+  window.isAdmin = verifyMode("admin");
+  window.isKafe = verifyMode("kafe");
+  window.isReader = verifyMode("reader");
+
+
   if (chooseBtn) {
     chooseBtn.addEventListener("click", () => {
       if (modal) modal.style.display = "flex";
     });
   }
 
-  if (closeBtn) {
-    closeBtn.addEventListener("click", () => {
-      if (modal) modal.style.display = "none";
-    });
-  }
+if (closeBtn) closeBtn.addEventListener("click", () => modal.style.display = "none");
 
   options.forEach(opt => {
     opt.addEventListener("click", () => {
       const mode = opt.dataset.mode;
 
-      // Reset all flags first
-      localStorage.removeItem("isAdmin");
-      localStorage.removeItem("isKafe");
-      localStorage.removeItem("isReader");
+// Reset all tokens first
+      ["admin","kafe","reader"].forEach(m => localStorage.removeItem(`${m}Token`));
 
-      if (mode === "admin") {
-        const pwd = prompt("Enter Admin password:");
-        if (pwd !== "123456") {
-          alert("❌ Incorrect password. Access denied.");
-          return;
-        }
-        localStorage.setItem("isAdmin", "true");
+      const pwd = prompt(`Enter ${mode} password:`);
+      if (pwd !== PASSWORDS[mode]) {
+        alert("❌ Incorrect password. Access denied.");
+        return;
       }
-
-      if (mode === "kafe") {
-        const pwd = prompt("Enter Cafe password:");
-        if (pwd !== "kafe") {
-          alert("❌ Incorrect password. Access denied.");
-          return;
-        }
-        localStorage.setItem("isKafe", "true");
-      }
-
-      if (mode === "reader") {
-        const pwd = prompt("Enter reader password:");
-        if (pwd !== "mille123") {
-          alert("❌ Incorrect password. Access denied.");
-          return;
-        }
-        localStorage.setItem("isReader", "true");
-      }
+      localStorage.setItem(`${mode}Token`, hash(pwd));
 
       localStorage.setItem("mode", mode);
       alert(`Mode set to ${mode}`);
