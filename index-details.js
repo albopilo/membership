@@ -1388,109 +1388,93 @@ document.addEventListener("DOMContentLoaded", () => {
   const chooseBtn = document.getElementById("chooseModeBtn");
   const modal = document.getElementById("modeModal");
   const closeBtn = document.getElementById("closeModeModal");
-  const options = document.querySelectorAll(".modeOption");
+  const options = Array.from(document.querySelectorAll(".modeOption") || []);
 
-  // 🔒 Expected password hashes (very simple obfuscation)
-  const PASSWORDS = {
-    admin: "123456",
-    kafe: "kafe",
-    reader: "mille123"
-  };
+  const PASSWORDS = { admin: "123456", kafe: "kafe", reader: "mille123" };
 
-  // Helper: simple hash (base64 of string)
-  function hash(str) {
-    return btoa(unescape(encodeURIComponent(str)));
+  function hash(str) { return btoa(unescape(encodeURIComponent(str))); }
+
+  function setModeToken(mode, tokenObj) { localStorage.setItem(`${mode}Token`, JSON.stringify(tokenObj)); }
+  function getModeToken(mode) {
+    try { return JSON.parse(localStorage.getItem(`${mode}Token`) || "null"); } catch (e) { return null; }
   }
 
-  // Verify localStorage token on every load
   function verifyMode(mode) {
-    const token = localStorage.getItem(`${mode}Token`);
-    if (!token) return false;
-    return token === hash(PASSWORDS[mode]);
+    const tok = getModeToken(mode);
+    if (!tok) return false;
+    if (tok.type === "server") return tok.exp && Date.now() < tok.exp;
+    if (tok.type === "client") return tok.value === hash(PASSWORDS[mode]);
+    return false;
   }
 
-  // Expose safe flags
-  window.isAdmin = verifyMode("admin");
-  window.isKafe = verifyMode("kafe");
+  // Expose verified flags
+  window.isAdmin  = verifyMode("admin");
+  window.isKafe   = verifyMode("kafe");
   window.isReader = verifyMode("reader");
 
-
-  if (chooseBtn) {
-    chooseBtn.addEventListener("click", () => {
-      if (modal) modal.style.display = "flex";
-    });
-  }
-
-if (closeBtn) closeBtn.addEventListener("click", () => modal.style.display = "none");
+  if (chooseBtn) chooseBtn.addEventListener("click", () => modal?.style.setProperty("display","flex"));
+  if (closeBtn)  closeBtn.addEventListener("click", () => modal?.style.setProperty("display","none"));
 
   options.forEach(opt => {
-    opt.addEventListener("click", () => {
+    opt.addEventListener("click", async () => {
       const mode = opt.dataset.mode;
-
-// Reset all tokens first
       ["admin","kafe","reader"].forEach(m => localStorage.removeItem(`${m}Token`));
 
       const pwd = prompt(`Enter ${mode} password:`);
+      if (!pwd) return;
+
+      // Try server validation first
+      try {
+        const res = await fetch("/.netlify/functions/validateMode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode, password: pwd })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setModeToken(mode, {
+            type: "server",
+            value: data.token,
+            exp: Date.now() + (data.ttlSeconds || 600) * 1000
+          });
+          localStorage.setItem("mode", mode);
+          alert(`Mode set to ${mode} (server-validated)`);
+          modal?.style.setProperty("display","none");
+          return location.reload();
+        }
+      } catch (e) {
+        console.warn("Server validation failed, falling back to client-side check", e);
+      }
+
+      // Fallback check
       if (pwd !== PASSWORDS[mode]) {
         alert("❌ Incorrect password. Access denied.");
         return;
       }
-      localStorage.setItem(`${mode}Token`, hash(pwd));
-
+      setModeToken(mode, { type: "client", value: hash(pwd) });
       localStorage.setItem("mode", mode);
       alert(`Mode set to ${mode}`);
-      if (modal) modal.style.display = "none";
+      modal?.style.setProperty("display","none");
       location.reload();
     });
   });
 
-  if (typeof setupModeSelect === "function") {
-    setupModeSelect(document.getElementById("modeSelect"));
-  }
+  // Wire page UIs
+  if (document.getElementById("memberList"))  typeof wireListUI === "function"   ? wireListUI()   : console.error("wireListUI missing");
+  if (document.getElementById("memberDetails")) typeof wireDetailsUI === "function"? wireDetailsUI(): console.error("wireDetailsUI missing");
 
-  const onListPage = document.getElementById("memberList");
-  const onDetailsPage = document.getElementById("memberDetails");
-
-  if (onListPage) {
-    if (typeof wireListUI === "function") {
-      wireListUI();
-    } else {
-      console.error("wireListUI missing");
-    }
-  }
-
-  if (onDetailsPage) {
-    if (typeof wireDetailsUI === "function") {
-      wireDetailsUI();
-    } else {
-      console.error("wireDetailsUI missing");
-    }
-  }
-
-const isAdmin = window.isAdmin;
-const isKafe = window.isKafe;
-const isReader = window.isReader;
-
-  if (isKafe && !isAdmin) {
-    const manualInputSection = document.getElementById("manualInputSection");
-    if (manualInputSection) manualInputSection.style.display = "none";
+  // Apply restrictions
+  if (window.isKafe && !window.isAdmin) {
+    document.getElementById("manualInputSection")?.style.setProperty("display","none");
     document.querySelectorAll(".deleteBtn").forEach(btn => btn.remove());
-    const settingsLink = document.getElementById("settingsLink");
-    if (settingsLink) settingsLink.style.display = "none";
+    document.getElementById("settingsLink")?.style.setProperty("display","none");
   }
-
-  if (isReader) {
+  if (window.isReader) {
     document.querySelectorAll(".addTransactionBtn, .deleteBtn").forEach(btn => btn.remove());
   }
-
-  if (isAdmin || isKafe) {
-    const addBtn = document.getElementById("addBtn");
-    if (addBtn) addBtn.addEventListener("click", () => location.href = "add.html");
-
-    const settingsBtn = document.getElementById("settingsBtn");
-    if (settingsBtn) settingsBtn.addEventListener("click", () => location.href = "settings.html");
-
-    const dashboardBtn = document.getElementById("dashboardBtn");
-    if (dashboardBtn) dashboardBtn.addEventListener("click", () => location.href = "dashboard.html");
+  if (window.isAdmin || window.isKafe) {
+    document.getElementById("addBtn")?.addEventListener("click", () => location.href = "add.html");
+    document.getElementById("settingsBtn")?.addEventListener("click", () => location.href = "settings.html");
+    document.getElementById("dashboardBtn")?.addEventListener("click", () => location.href = "dashboard.html");
   }
 });

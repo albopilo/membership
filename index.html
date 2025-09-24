@@ -143,6 +143,25 @@
         }
       });
     });
+
+    async function validateModeServer(mode, password) {
+  const response = await fetch("/.netlify/functions/validateMode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, password })
+  });
+
+  const result = await response.json();
+  if (result.success) {
+    localStorage.setItem("mode", result.mode);
+    localStorage.setItem("authToken", result.token); // save token
+    alert(`✅ Logged in as ${result.mode}`);
+    location.reload();
+  } else {
+    alert(`❌ ${result.message}`);
+  }
+}
+
   </script>
 
 </body>
