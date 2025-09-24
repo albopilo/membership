@@ -1468,9 +1468,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  const isAdmin = window.isAdmin;
-  const isKafe = window.isKafe;
-  const isReader = window.isReader;
+const isAdmin = localStorage.getItem("isAdmin") === "true";
+const isKafe = localStorage.getItem("isKafe") === "true";
+const isReader = localStorage.getItem("isReader") === "true";
+
 
   if (isKafe && !isAdmin) {
     const manualInputSection = document.getElementById("manualInputSection");
