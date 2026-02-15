@@ -753,6 +753,15 @@ async function handleReceiptOCR(file, statusEl, amountEl) {
 // Re-evaluates member.tier using thresholds, with a robust "no demote if created this year" guard.
 // Falls back to upgradeDate when createdAt is missing, so new members aren’t demoted prematurely.
 async function updateTier(member) {
+  // HARD SAFETY: never demote restored members in the same year
+const restoredAt = member.tierRestoredAt
+  ? (member.tierRestoredAt.toDate?.() || new Date(member.tierRestoredAt))
+  : null;
+
+const now = new Date();
+const sameYearRestore =
+  restoredAt && restoredAt.getFullYear() === now.getFullYear();
+
   // Ensure settings are loaded
   if (!window.tierSettings || !Object.keys(window.tierSettings).length) {
     await loadTierSettingsFromCloud();
@@ -775,7 +784,7 @@ async function updateTier(member) {
   const yearSpend  = Number(member.yearlySinceUpgrade ?? 0);
 
   // Robust creation-year guard: prefer createdAt; fallback to upgradeDate
-  const now = new Date();
+
   const thisYear = now.getFullYear();
   let originDate = null;
 
@@ -804,17 +813,15 @@ async function updateTier(member) {
       member.yearlySinceUpgrade = 0;
     } else {
       // Demotion (guarded)
-      if (!isNewThisYear && yearSpend < silverStayYear) {
-        newTier = "Bronze";
-        // No spend reset on demotion
-      }
+      if (!isNewThisYear && !sameYearRestore && yearSpend < silverStayYear) {
+  newTier = "Bronze";
+}
     }
   } else if (currentTier === "Gold") {
     // Demotion (guarded)
-    if (!isNewThisYear && yearSpend < goldStayYear) {
-      newTier = "Silver";
-      // No spend reset on demotion
-    }
+    if (!isNewThisYear && !sameYearRestore && yearSpend < goldStayYear) {
+  newTier = "Silver";
+}
   }
 
   member.tier = newTier;
